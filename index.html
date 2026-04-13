@@ -1,0 +1,156 @@
+<script>
+  const STORAGE_KEY = "vdc_viajes_operacion_v1";
+  const COSTO_DIA = 57925.77; // 🔥 CONSTANTE
+  const tbody = document.getElementById("tbodyViajes");
+
+  const fmtMoney = (n) => {
+    const num = Number(n || 0);
+    return num.toLocaleString("es-MX", {
+      style: "currency",
+      currency: "MXN",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    });
+  };
+
+  const fmtNumber = (n, decimals = 2) => {
+    const num = Number(n || 0);
+    return num.toLocaleString("es-MX", {
+      minimumFractionDigits: decimals,
+      maximumFractionDigits: decimals
+    });
+  };
+
+  const parseNum = (value) => {
+    const n = parseFloat(value);
+    return isNaN(n) ? 0 : n;
+  };
+
+  function getData() {
+    return JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+  }
+
+  function saveData(data) {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  }
+
+  function createRow(data = {}) {
+    return {
+      id: data.id || crypto.randomUUID(),
+      viaje: data.viaje || "",
+      fecha: data.fecha || new Date().toISOString().slice(0, 10),
+      kilos: Number(data.kilos || 0),
+      precioKg: Number(data.precioKg || 0)
+    };
+  }
+
+  function calcRow(row) {
+    const costoFactura = row.kilos * row.precioKg;
+    const totalOperacion = costoFactura + COSTO_DIA;
+    return { costoFactura, totalOperacion };
+  }
+
+  function render() {
+    const rows = getData();
+    tbody.innerHTML = "";
+
+    let totalKilos = 0;
+    let totalFactura = 0;
+    let totalDia = 0;
+    let totalOperacion = 0;
+
+    rows.forEach((row) => {
+      const { costoFactura, totalOperacion: totalOp } = calcRow(row);
+
+      totalKilos += row.kilos;
+      totalFactura += costoFactura;
+      totalDia += COSTO_DIA;
+      totalOperacion += totalOp;
+
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td><input value="${row.viaje}" data-field="viaje" data-id="${row.id}"></td>
+        <td><input type="date" value="${row.fecha}" data-field="fecha" data-id="${row.id}"></td>
+        <td><input type="number" class="num" value="${row.kilos}" data-field="kilos" data-id="${row.id}"></td>
+        <td><input type="number" class="num" value="${row.precioKg}" data-field="precioKg" data-id="${row.id}"></td>
+        <td><input class="num readonly" value="${fmtMoney(costoFactura)}" readonly></td>
+        <td><input class="num readonly" value="${fmtMoney(COSTO_DIA)}" readonly></td>
+        <td><input class="num readonly" value="${fmtMoney(totalOp)}" readonly></td>
+        <td><button data-delete="${row.id}">X</button></td>
+      `;
+      tbody.appendChild(tr);
+    });
+
+    document.getElementById("totalKilos").textContent = fmtNumber(totalKilos);
+    document.getElementById("totalFactura").textContent = fmtMoney(totalFactura);
+    document.getElementById("totalDia").textContent = fmtMoney(totalDia);
+    document.getElementById("totalOperacion").textContent = fmtMoney(totalOperacion);
+
+    document.getElementById("kpiKilos").textContent = fmtNumber(totalKilos) + " kg";
+    document.getElementById("kpiFactura").textContent = fmtMoney(totalFactura);
+    document.getElementById("kpiDia").textContent = fmtMoney(totalDia);
+    document.getElementById("kpiOperacion").textContent = fmtMoney(totalOperacion);
+  }
+
+  function updateField(id, field, value) {
+    const rows = getData();
+    const row = rows.find(r => r.id === id);
+    if (!row) return;
+
+    if (field === "kilos" || field === "precioKg") {
+      row[field] = parseNum(value);
+    } else {
+      row[field] = value;
+    }
+
+    saveData(rows);
+    render();
+  }
+
+  function addRow() {
+    const rows = getData();
+    rows.push(createRow());
+    saveData(rows);
+    render();
+  }
+
+  function deleteRow(id) {
+    const rows = getData().filter(r => r.id !== id);
+    saveData(rows);
+    render();
+  }
+
+  function clearAll() {
+    if (!confirm("¿Borrar todo?")) return;
+    localStorage.removeItem(STORAGE_KEY);
+    init();
+  }
+
+  document.getElementById("btnAdd").onclick = addRow;
+  document.getElementById("btnLimpiar").onclick = clearAll;
+  document.getElementById("btnPrint").onclick = () => window.print();
+
+  tbody.addEventListener("input", e => {
+    const id = e.target.dataset.id;
+    const field = e.target.dataset.field;
+    if (id && field) updateField(id, field, e.target.value);
+  });
+
+  tbody.addEventListener("click", e => {
+    if (e.target.dataset.delete) {
+      deleteRow(e.target.dataset.delete);
+    }
+  });
+
+  function init() {
+    if (!getData().length) {
+      saveData([
+        createRow({ viaje: "KG FACTURA 09-04-26", kilos: 99610, precioKg: 3.60 }),
+        createRow({ viaje: "KG FACTURA 10-04-26", kilos: 108610.8, precioKg: 3.60 })
+      ]);
+    }
+    render();
+  }
+
+  init();
+</script>
