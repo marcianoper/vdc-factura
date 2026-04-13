@@ -291,7 +291,7 @@
     <section class="hero">
       <h1>Control de Viajes y Total de Operación</h1>
       <p>
-        Captura los kilos de factura, el precio por kilo y el costo del día de cada viaje.
+        Captura los kilos de factura y el precio por kilo de cada viaje.
         El sistema calcula automáticamente el costo factura y el total de operación.
       </p>
     </section>
@@ -341,7 +341,8 @@
           <div class="helper">
             Fórmula usada por cada viaje:
             <strong>Costo factura = kilos factura × precio por kg</strong><br>
-            <strong>Total operación = costo factura + costo día</strong>
+            <strong>Total operación = costo factura + costo día</strong><br>
+            <strong>Costo día fijo = $57,925.77</strong>
           </div>
         </div>
       </section>
@@ -397,7 +398,9 @@
   </div>
 
   <script>
-    const STORAGE_KEY = "vdc_viajes_operacion_v1";
+    const STORAGE_KEY = "vdc_viajes_operacion_v2";
+    const COSTO_DIA_FIJO = 57925.77;
+
     const tbody = document.getElementById("tbodyViajes");
 
     const fmtMoney = (n) => {
@@ -419,11 +422,20 @@
     };
 
     const parseNum = (value) => {
-      if (value === null || value === undefined) return 0;
+      if (value === null || value === undefined || value === "") return 0;
       const clean = String(value).replace(/[^0-9.\-]/g, "");
       const n = parseFloat(clean);
       return isNaN(n) ? 0 : n;
     };
+
+    function escapeHtml(str = "") {
+      return String(str)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
 
     function getData() {
       try {
@@ -437,118 +449,147 @@
       localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
     }
 
+    function formatDateForViaje(fecha) {
+      if (!fecha) return "";
+      const [year, month, day] = fecha.split("-");
+      if (!year || !month || !day) return "";
+      return `${day}-${month}-${year.slice(-2)}`;
+    }
+
+    function buildViajeName(fecha) {
+      const f = formatDateForViaje(fecha);
+      return f ? `KG FACTURA ${f}` : "KG FACTURA";
+    }
+
     function createRow(data = {}) {
+      const fecha = data.fecha || new Date().toISOString().slice(0, 10);
+      const viajeGenerado = buildViajeName(fecha);
+
       return {
         id: data.id || crypto.randomUUID(),
-        viaje: data.viaje || "",
-        fecha: data.fecha || new Date().toISOString().slice(0, 10),
+        fecha,
+        viaje: data.viaje || viajeGenerado,
+        viajeManual: data.viajeManual || false,
         kilos: Number(data.kilos || 0),
         precioKg: Number(data.precioKg || 0),
-        costoDia: Number(data.costoDia || 0)
+        costoDia: COSTO_DIA_FIJO
       };
     }
 
     function calcRow(row) {
-      const costoFactura = row.kilos * row.precioKg;
-      const totalOperacion = costoFactura + row.costoDia;
-      return { costoFactura, totalOperacion };
+      const kilos = Number(row.kilos || 0);
+      const precioKg = Number(row.precioKg || 0);
+      const costoDia = COSTO_DIA_FIJO;
+      const costoFactura = kilos * precioKg;
+      const totalOperacion = costoFactura + costoDia;
+      return { costoFactura, totalOperacion, costoDia };
+    }
+
+    function buildRowHTML(row) {
+      const { costoFactura, totalOperacion, costoDia } = calcRow(row);
+
+      return `
+        <td>
+          <input
+            type="text"
+            value="${escapeHtml(row.viaje)}"
+            data-field="viaje"
+            data-id="${row.id}"
+            placeholder="Ej. KG FACTURA 09-04-26"
+          />
+        </td>
+        <td>
+          <input
+            type="date"
+            value="${escapeHtml(row.fecha)}"
+            data-field="fecha"
+            data-id="${row.id}"
+          />
+        </td>
+        <td>
+          <input
+            type="number"
+            step="0.01"
+            min="0"
+            class="num"
+            value="${row.kilos || row.kilos === 0 ? row.kilos : ""}"
+            data-field="kilos"
+            data-id="${row.id}"
+            placeholder="0.00"
+          />
+        </td>
+        <td>
+          <input
+            type="number"
+            step="0.0001"
+            min="0"
+            class="num"
+            value="${row.precioKg || row.precioKg === 0 ? row.precioKg : ""}"
+            data-field="precioKg"
+            data-id="${row.id}"
+            placeholder="0.0000"
+          />
+        </td>
+        <td>
+          <input
+            type="text"
+            class="num readonly"
+            value="${fmtMoney(costoFactura)}"
+            readonly
+          />
+        </td>
+        <td>
+          <input
+            type="text"
+            class="num readonly"
+            value="${fmtMoney(costoDia)}"
+            readonly
+          />
+        </td>
+        <td>
+          <input
+            type="text"
+            class="num readonly"
+            value="${fmtMoney(totalOperacion)}"
+            readonly
+          />
+        </td>
+        <td>
+          <div class="row-actions">
+            <button class="btn-danger" data-delete="${row.id}">Eliminar</button>
+          </div>
+        </td>
+      `;
     }
 
     function render() {
       const rows = getData();
       tbody.innerHTML = "";
 
+      rows.forEach((row) => {
+        const tr = document.createElement("tr");
+        tr.dataset.rowId = row.id;
+        tr.innerHTML = buildRowHTML(row);
+        tbody.appendChild(tr);
+      });
+
+      updateTotals();
+    }
+
+    function updateTotals() {
+      const rows = getData();
+
       let totalKilos = 0;
       let totalFactura = 0;
       let totalDia = 0;
       let totalOperacion = 0;
 
-      rows.forEach((row, index) => {
-        const { costoFactura, totalOperacion: totalOp } = calcRow(row);
-
+      rows.forEach((row) => {
+        const { costoFactura, totalOperacion: totalOp, costoDia } = calcRow(row);
         totalKilos += Number(row.kilos || 0);
         totalFactura += costoFactura;
-        totalDia += Number(row.costoDia || 0);
+        totalDia += costoDia;
         totalOperacion += totalOp;
-
-        const tr = document.createElement("tr");
-        tr.innerHTML = `
-          <td>
-            <input
-              type="text"
-              value="${escapeHtml(row.viaje)}"
-              data-field="viaje"
-              data-id="${row.id}"
-              placeholder="Ej. KG FACTURA 09-04-26"
-            />
-          </td>
-          <td>
-            <input
-              type="date"
-              value="${escapeHtml(row.fecha)}"
-              data-field="fecha"
-              data-id="${row.id}"
-            />
-          </td>
-          <td>
-            <input
-              type="number"
-              step="0.01"
-              min="0"
-              class="num"
-              value="${row.kilos || ""}"
-              data-field="kilos"
-              data-id="${row.id}"
-              placeholder="0.00"
-            />
-          </td>
-          <td>
-            <input
-              type="number"
-              step="0.0001"
-              min="0"
-              class="num"
-              value="${row.precioKg || ""}"
-              data-field="precioKg"
-              data-id="${row.id}"
-              placeholder="0.0000"
-            />
-          </td>
-          <td>
-            <input
-              type="text"
-              class="num readonly"
-              value="${fmtMoney(costoFactura)}"
-              readonly
-            />
-          </td>
-          <td>
-            <input
-              type="number"
-              step="0.01"
-              min="0"
-              class="num"
-              value="${row.costoDia || ""}"
-              data-field="costoDia"
-              data-id="${row.id}"
-              placeholder="0.00"
-            />
-          </td>
-          <td>
-            <input
-              type="text"
-              class="num readonly"
-              value="${fmtMoney(totalOp)}"
-              readonly
-            />
-          </td>
-          <td>
-            <div class="row-actions">
-              <button class="btn-danger" data-delete="${row.id}">Eliminar</button>
-            </div>
-          </td>
-        `;
-        tbody.appendChild(tr);
       });
 
       document.getElementById("totalKilos").textContent = fmtNumber(totalKilos, 2);
@@ -562,19 +603,35 @@
       document.getElementById("kpiOperacion").textContent = fmtMoney(totalOperacion);
     }
 
-    function updateField(id, field, value) {
+    function updateSingleRowInDOM(id) {
       const rows = getData();
-      const idx = rows.findIndex(r => r.id === id);
-      if (idx === -1) return;
+      const row = rows.find(r => r.id === id);
+      if (!row) return;
 
-      if (field === "kilos" || field === "precioKg" || field === "costoDia") {
-        rows[idx][field] = parseNum(value);
-      } else {
-        rows[idx][field] = value;
+      const tr = tbody.querySelector(`tr[data-row-id="${id}"]`);
+      if (!tr) return;
+
+      const active = document.activeElement;
+      const activeField = active?.dataset?.field;
+      const activeId = active?.dataset?.id;
+      const selectionStart = active && typeof active.selectionStart === "number" ? active.selectionStart : null;
+      const selectionEnd = active && typeof active.selectionEnd === "number" ? active.selectionEnd : null;
+
+      tr.innerHTML = buildRowHTML(row);
+
+      if (activeId === id && activeField) {
+        const nextInput = tr.querySelector(`[data-id="${id}"][data-field="${activeField}"]`);
+        if (nextInput) {
+          nextInput.focus();
+          try {
+            if (selectionStart !== null && selectionEnd !== null && nextInput.type !== "date") {
+              nextInput.setSelectionRange(selectionStart, selectionEnd);
+            }
+          } catch {}
+        }
       }
 
-      saveData(rows);
-      render();
+      updateTotals();
     }
 
     function addRow() {
@@ -596,23 +653,51 @@
       init();
     }
 
-    function escapeHtml(str = "") {
-      return String(str)
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;")
-        .replaceAll('"', "&quot;")
-        .replaceAll("'", "&#039;");
+    function updateField(id, field, value) {
+      const rows = getData();
+      const idx = rows.findIndex(r => r.id === id);
+      if (idx === -1) return;
+
+      const row = rows[idx];
+
+      if (field === "kilos" || field === "precioKg") {
+        row[field] = parseNum(value);
+      } else if (field === "fecha") {
+        row.fecha = value;
+        if (!row.viajeManual) {
+          row.viaje = buildViajeName(value);
+        }
+      } else if (field === "viaje") {
+        row.viaje = value;
+        row.viajeManual = value.trim() !== "" && value.trim() !== buildViajeName(row.fecha);
+      } else {
+        row[field] = value;
+      }
+
+      row.costoDia = COSTO_DIA_FIJO;
+
+      saveData(rows);
+      updateSingleRowInDOM(id);
     }
 
     document.getElementById("btnAdd").addEventListener("click", addRow);
     document.getElementById("btnLimpiar").addEventListener("click", clearAll);
     document.getElementById("btnPrint").addEventListener("click", () => window.print());
     document.getElementById("btnGuardar").addEventListener("click", () => {
+      const rows = getData().map(r => ({ ...r, costoDia: COSTO_DIA_FIJO }));
+      saveData(rows);
       alert("Datos guardados correctamente.");
     });
 
     tbody.addEventListener("input", (e) => {
+      const target = e.target;
+      const id = target.dataset.id;
+      const field = target.dataset.field;
+      if (!id || !field) return;
+      updateField(id, field, target.value);
+    });
+
+    tbody.addEventListener("change", (e) => {
       const target = e.target;
       const id = target.dataset.id;
       const field = target.dataset.field;
@@ -629,25 +714,33 @@
 
     function init() {
       const rows = getData();
+
       if (!rows.length) {
         const seed = [
           createRow({
-            viaje: "KG FACTURA 09-04-26",
             fecha: "2026-04-09",
             kilos: 99610,
-            precioKg: 3.60,
-            costoDia: 55634.19
+            precioKg: 3.60
           }),
           createRow({
-            viaje: "KG FACTURA 10-04-26",
             fecha: "2026-04-10",
             kilos: 108610.8,
-            precioKg: 3.60,
-            costoDia: 57925.77
+            precioKg: 3.60
           })
         ];
         saveData(seed);
+      } else {
+        const normalized = rows.map(r => {
+          const row = createRow(r);
+          row.costoDia = COSTO_DIA_FIJO;
+          if (!row.viaje || row.viaje.trim() === "") {
+            row.viaje = buildViajeName(row.fecha);
+          }
+          return row;
+        });
+        saveData(normalized);
       }
+
       render();
     }
 
