@@ -1,156 +1,657 @@
-<script>
-  const STORAGE_KEY = "vdc_viajes_operacion_v1";
-  const COSTO_DIA = 57925.77; // 🔥 CONSTANTE
-  const tbody = document.getElementById("tbodyViajes");
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Control de Viajes y Operación</title>
 
-  const fmtMoney = (n) => {
-    const num = Number(n || 0);
-    return num.toLocaleString("es-MX", {
-      style: "currency",
-      currency: "MXN",
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2
-    });
-  };
+  <style>
+    :root{
+      --brand:#0a7a3b;
+      --brand2:#0f9a52;
+      --bg:#f6f7f8;
+      --card:#ffffff;
+      --ink:#0f172a;
+      --muted:#64748b;
+      --line:#e5e7eb;
+      --shadow:0 18px 50px rgba(2,6,23,.10);
+      --shadow2:0 10px 24px rgba(2,6,23,.08);
+      --danger:#b91c1c;
+      --warn:#b45309;
+      --ok:#166534;
+      --r:18px;
+    }
 
-  const fmtNumber = (n, decimals = 2) => {
-    const num = Number(n || 0);
-    return num.toLocaleString("es-MX", {
-      minimumFractionDigits: decimals,
-      maximumFractionDigits: decimals
-    });
-  };
+    *{ box-sizing:border-box; }
+    html,body{ margin:0; padding:0; }
+    body{
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      background:var(--bg);
+      color:var(--ink);
+    }
 
-  const parseNum = (value) => {
-    const n = parseFloat(value);
-    return isNaN(n) ? 0 : n;
-  };
+    .wrap{
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 24px;
+    }
 
-  function getData() {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
-  }
+    .hero{
+      background: linear-gradient(135deg, var(--brand), var(--brand2));
+      color:#fff;
+      border-radius: 24px;
+      padding: 28px;
+      box-shadow: var(--shadow);
+      margin-bottom: 22px;
+    }
 
-  function saveData(data) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-  }
+    .hero h1{
+      margin:0 0 8px;
+      font-size: clamp(1.8rem, 3vw, 2.6rem);
+      line-height:1.1;
+    }
 
-  function createRow(data = {}) {
-    return {
-      id: data.id || crypto.randomUUID(),
-      viaje: data.viaje || "",
-      fecha: data.fecha || new Date().toISOString().slice(0, 10),
-      kilos: Number(data.kilos || 0),
-      precioKg: Number(data.precioKg || 0)
+    .hero p{
+      margin:0;
+      opacity:.95;
+      font-size: 1rem;
+    }
+
+    .grid{
+      display:grid;
+      grid-template-columns: 1.25fr .75fr;
+      gap:20px;
+      align-items:start;
+    }
+
+    .card{
+      background:var(--card);
+      border:1px solid var(--line);
+      border-radius: var(--r);
+      box-shadow: var(--shadow2);
+      overflow:hidden;
+    }
+
+    .card-head{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:12px;
+      padding:18px 20px;
+      border-bottom:1px solid var(--line);
+      background:#fcfcfd;
+    }
+
+    .card-head h2{
+      margin:0;
+      font-size:1.05rem;
+    }
+
+    .card-body{
+      padding:18px 20px 20px;
+    }
+
+    .toolbar{
+      display:flex;
+      flex-wrap:wrap;
+      gap:10px;
+    }
+
+    button{
+      border:none;
+      border-radius:12px;
+      padding:12px 16px;
+      font-weight:700;
+      cursor:pointer;
+      transition:.18s ease;
+    }
+
+    .btn-primary{
+      background:var(--brand);
+      color:#fff;
+    }
+
+    .btn-primary:hover{ transform:translateY(-1px); }
+
+    .btn-soft{
+      background:#eefaf3;
+      color:var(--brand);
+      border:1px solid #ccebd9;
+    }
+
+    .btn-danger{
+      background:#fff1f2;
+      color:var(--danger);
+      border:1px solid #fecdd3;
+    }
+
+    .btn-dark{
+      background:#0f172a;
+      color:#fff;
+    }
+
+    .table-wrap{
+      width:100%;
+      overflow:auto;
+      border:1px solid var(--line);
+      border-radius:16px;
+    }
+
+    table{
+      width:100%;
+      border-collapse:collapse;
+      min-width:1050px;
+      background:#fff;
+    }
+
+    thead th{
+      background:#f8fafc;
+      color:#0f172a;
+      text-align:left;
+      font-size:.92rem;
+      padding:14px 12px;
+      border-bottom:1px solid var(--line);
+      position:sticky;
+      top:0;
+      z-index:2;
+      white-space:nowrap;
+    }
+
+    tbody td{
+      padding:10px 12px;
+      border-bottom:1px solid var(--line);
+      vertical-align:middle;
+    }
+
+    tbody tr:hover{
+      background:#fafafa;
+    }
+
+    tfoot td{
+      padding:14px 12px;
+      border-top:2px solid var(--line);
+      font-weight:800;
+      background:#fcfcfd;
+    }
+
+    input, select{
+      width:100%;
+      border:1px solid #dbe2ea;
+      background:#fff;
+      border-radius:12px;
+      padding:10px 12px;
+      font:inherit;
+      color:var(--ink);
+      outline:none;
+    }
+
+    input:focus{
+      border-color:var(--brand2);
+      box-shadow:0 0 0 4px rgba(15,154,82,.10);
+    }
+
+    .num{
+      text-align:right;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .readonly{
+      background:#f8fafc;
+      font-weight:700;
+    }
+
+    .summary{
+      display:grid;
+      gap:14px;
+    }
+
+    .kpi{
+      border:1px solid var(--line);
+      border-radius:18px;
+      padding:18px;
+      background:linear-gradient(180deg,#ffffff,#fbfbfc);
+    }
+
+    .kpi .label{
+      color:var(--muted);
+      font-size:.92rem;
+      margin-bottom:8px;
+    }
+
+    .kpi .value{
+      font-size:1.7rem;
+      font-weight:900;
+      line-height:1.1;
+      word-break:break-word;
+    }
+
+    .kpi.green .value{ color:var(--ok); }
+    .kpi.gold .value{ color:var(--warn); }
+    .kpi.dark .value{ color:#0f172a; }
+
+    .helper{
+      margin-top:10px;
+      color:var(--muted);
+      font-size:.92rem;
+      line-height:1.45;
+    }
+
+    .row-actions{
+      display:flex;
+      justify-content:center;
+    }
+
+    .pill{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      padding:8px 12px;
+      border-radius:999px;
+      font-size:.88rem;
+      font-weight:700;
+      background:#eefaf3;
+      color:var(--brand);
+      border:1px solid #ccebd9;
+    }
+
+    .footer-note{
+      margin-top:18px;
+      color:var(--muted);
+      font-size:.9rem;
+    }
+
+    @media (max-width: 1080px){
+      .grid{
+        grid-template-columns:1fr;
+      }
+    }
+
+    @media print{
+      body{
+        background:#fff;
+      }
+      .hero,
+      .toolbar,
+      .no-print{
+        display:none !important;
+      }
+      .card{
+        box-shadow:none;
+        border:1px solid #ddd;
+      }
+      .wrap{
+        max-width:none;
+        padding:0;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <section class="hero">
+      <h1>Control de Viajes y Total de Operación</h1>
+      <p>
+        Captura los kilos de factura, el precio por kilo y el costo del día de cada viaje.
+        El sistema calcula automáticamente el costo factura y el total de operación.
+      </p>
+    </section>
+
+    <div class="grid">
+      <section class="card">
+        <div class="card-head">
+          <h2>Viajes capturados</h2>
+          <div class="toolbar no-print">
+            <button class="btn-primary" id="btnAdd">+ Agregar viaje</button>
+            <button class="btn-soft" id="btnGuardar">Guardar</button>
+            <button class="btn-dark" id="btnPrint">Imprimir</button>
+            <button class="btn-danger" id="btnLimpiar">Limpiar todo</button>
+          </div>
+        </div>
+
+        <div class="card-body">
+          <div class="table-wrap">
+            <table id="tablaViajes">
+              <thead>
+                <tr>
+                  <th style="min-width:180px;">Viaje / Factura</th>
+                  <th style="min-width:140px;">Fecha</th>
+                  <th class="num" style="min-width:140px;">Kilos factura</th>
+                  <th class="num" style="min-width:140px;">Precio x kg</th>
+                  <th class="num" style="min-width:160px;">Costo factura</th>
+                  <th class="num" style="min-width:150px;">Costo día</th>
+                  <th class="num" style="min-width:180px;">Total operación</th>
+                  <th style="min-width:120px;">Acción</th>
+                </tr>
+              </thead>
+              <tbody id="tbodyViajes"></tbody>
+              <tfoot>
+                <tr>
+                  <td colspan="2"><strong>TOTALES</strong></td>
+                  <td class="num" id="totalKilos">0.00</td>
+                  <td></td>
+                  <td class="num" id="totalFactura">$0.00</td>
+                  <td class="num" id="totalDia">$0.00</td>
+                  <td class="num" id="totalOperacion">$0.00</td>
+                  <td></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+
+          <div class="helper">
+            Fórmula usada por cada viaje:
+            <strong>Costo factura = kilos factura × precio por kg</strong><br>
+            <strong>Total operación = costo factura + costo día</strong>
+          </div>
+        </div>
+      </section>
+
+      <aside class="summary">
+        <section class="card">
+          <div class="card-head">
+            <h2>Resumen general</h2>
+            <span class="pill">Cálculo automático</span>
+          </div>
+          <div class="card-body summary">
+            <div class="kpi dark">
+              <div class="label">Total kilos facturados</div>
+              <div class="value" id="kpiKilos">0.00 kg</div>
+            </div>
+
+            <div class="kpi green">
+              <div class="label">Total costo factura</div>
+              <div class="value" id="kpiFactura">$0.00</div>
+            </div>
+
+            <div class="kpi gold">
+              <div class="label">Total costo día</div>
+              <div class="value" id="kpiDia">$0.00</div>
+            </div>
+
+            <div class="kpi dark">
+              <div class="label">Total operación</div>
+              <div class="value" id="kpiOperacion">$0.00</div>
+            </div>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card-head">
+            <h2>Notas</h2>
+          </div>
+          <div class="card-body">
+            <p class="helper" style="margin-top:0;">
+              Este formato te sirve para registrar varios viajes en un mismo día o en distintos días.
+            </p>
+            <p class="helper">
+              Más adelante se puede conectar con tu sistema para que este total de operación alimente otros módulos, como costos, inventario o utilidad final.
+            </p>
+          </div>
+        </section>
+      </aside>
+    </div>
+
+    <div class="footer-note">
+      Archivo local listo para usar. Los datos se guardan automáticamente en tu navegador.
+    </div>
+  </div>
+
+  <script>
+    const STORAGE_KEY = "vdc_viajes_operacion_v1";
+    const tbody = document.getElementById("tbodyViajes");
+
+    const fmtMoney = (n) => {
+      const num = Number(n || 0);
+      return num.toLocaleString("es-MX", {
+        style: "currency",
+        currency: "MXN",
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+      });
     };
-  }
 
-  function calcRow(row) {
-    const costoFactura = row.kilos * row.precioKg;
-    const totalOperacion = costoFactura + COSTO_DIA;
-    return { costoFactura, totalOperacion };
-  }
+    const fmtNumber = (n, decimals = 2) => {
+      const num = Number(n || 0);
+      return num.toLocaleString("es-MX", {
+        minimumFractionDigits: decimals,
+        maximumFractionDigits: decimals
+      });
+    };
 
-  function render() {
-    const rows = getData();
-    tbody.innerHTML = "";
+    const parseNum = (value) => {
+      if (value === null || value === undefined) return 0;
+      const clean = String(value).replace(/[^0-9.\-]/g, "");
+      const n = parseFloat(clean);
+      return isNaN(n) ? 0 : n;
+    };
 
-    let totalKilos = 0;
-    let totalFactura = 0;
-    let totalDia = 0;
-    let totalOperacion = 0;
+    function getData() {
+      try {
+        return JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+      } catch {
+        return [];
+      }
+    }
 
-    rows.forEach((row) => {
-      const { costoFactura, totalOperacion: totalOp } = calcRow(row);
+    function saveData(data) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    }
 
-      totalKilos += row.kilos;
-      totalFactura += costoFactura;
-      totalDia += COSTO_DIA;
-      totalOperacion += totalOp;
+    function createRow(data = {}) {
+      return {
+        id: data.id || crypto.randomUUID(),
+        viaje: data.viaje || "",
+        fecha: data.fecha || new Date().toISOString().slice(0, 10),
+        kilos: Number(data.kilos || 0),
+        precioKg: Number(data.precioKg || 0),
+        costoDia: Number(data.costoDia || 0)
+      };
+    }
 
-      const tr = document.createElement("tr");
-      tr.innerHTML = `
-        <td><input value="${row.viaje}" data-field="viaje" data-id="${row.id}"></td>
-        <td><input type="date" value="${row.fecha}" data-field="fecha" data-id="${row.id}"></td>
-        <td><input type="number" class="num" value="${row.kilos}" data-field="kilos" data-id="${row.id}"></td>
-        <td><input type="number" class="num" value="${row.precioKg}" data-field="precioKg" data-id="${row.id}"></td>
-        <td><input class="num readonly" value="${fmtMoney(costoFactura)}" readonly></td>
-        <td><input class="num readonly" value="${fmtMoney(COSTO_DIA)}" readonly></td>
-        <td><input class="num readonly" value="${fmtMoney(totalOp)}" readonly></td>
-        <td><button data-delete="${row.id}">X</button></td>
-      `;
-      tbody.appendChild(tr);
+    function calcRow(row) {
+      const costoFactura = row.kilos * row.precioKg;
+      const totalOperacion = costoFactura + row.costoDia;
+      return { costoFactura, totalOperacion };
+    }
+
+    function render() {
+      const rows = getData();
+      tbody.innerHTML = "";
+
+      let totalKilos = 0;
+      let totalFactura = 0;
+      let totalDia = 0;
+      let totalOperacion = 0;
+
+      rows.forEach((row, index) => {
+        const { costoFactura, totalOperacion: totalOp } = calcRow(row);
+
+        totalKilos += Number(row.kilos || 0);
+        totalFactura += costoFactura;
+        totalDia += Number(row.costoDia || 0);
+        totalOperacion += totalOp;
+
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>
+            <input
+              type="text"
+              value="${escapeHtml(row.viaje)}"
+              data-field="viaje"
+              data-id="${row.id}"
+              placeholder="Ej. KG FACTURA 09-04-26"
+            />
+          </td>
+          <td>
+            <input
+              type="date"
+              value="${escapeHtml(row.fecha)}"
+              data-field="fecha"
+              data-id="${row.id}"
+            />
+          </td>
+          <td>
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              class="num"
+              value="${row.kilos || ""}"
+              data-field="kilos"
+              data-id="${row.id}"
+              placeholder="0.00"
+            />
+          </td>
+          <td>
+            <input
+              type="number"
+              step="0.0001"
+              min="0"
+              class="num"
+              value="${row.precioKg || ""}"
+              data-field="precioKg"
+              data-id="${row.id}"
+              placeholder="0.0000"
+            />
+          </td>
+          <td>
+            <input
+              type="text"
+              class="num readonly"
+              value="${fmtMoney(costoFactura)}"
+              readonly
+            />
+          </td>
+          <td>
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              class="num"
+              value="${row.costoDia || ""}"
+              data-field="costoDia"
+              data-id="${row.id}"
+              placeholder="0.00"
+            />
+          </td>
+          <td>
+            <input
+              type="text"
+              class="num readonly"
+              value="${fmtMoney(totalOp)}"
+              readonly
+            />
+          </td>
+          <td>
+            <div class="row-actions">
+              <button class="btn-danger" data-delete="${row.id}">Eliminar</button>
+            </div>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+
+      document.getElementById("totalKilos").textContent = fmtNumber(totalKilos, 2);
+      document.getElementById("totalFactura").textContent = fmtMoney(totalFactura);
+      document.getElementById("totalDia").textContent = fmtMoney(totalDia);
+      document.getElementById("totalOperacion").textContent = fmtMoney(totalOperacion);
+
+      document.getElementById("kpiKilos").textContent = `${fmtNumber(totalKilos, 2)} kg`;
+      document.getElementById("kpiFactura").textContent = fmtMoney(totalFactura);
+      document.getElementById("kpiDia").textContent = fmtMoney(totalDia);
+      document.getElementById("kpiOperacion").textContent = fmtMoney(totalOperacion);
+    }
+
+    function updateField(id, field, value) {
+      const rows = getData();
+      const idx = rows.findIndex(r => r.id === id);
+      if (idx === -1) return;
+
+      if (field === "kilos" || field === "precioKg" || field === "costoDia") {
+        rows[idx][field] = parseNum(value);
+      } else {
+        rows[idx][field] = value;
+      }
+
+      saveData(rows);
+      render();
+    }
+
+    function addRow() {
+      const rows = getData();
+      rows.push(createRow());
+      saveData(rows);
+      render();
+    }
+
+    function deleteRow(id) {
+      const rows = getData().filter(r => r.id !== id);
+      saveData(rows);
+      render();
+    }
+
+    function clearAll() {
+      if (!confirm("¿Seguro que quieres borrar todos los viajes capturados?")) return;
+      localStorage.removeItem(STORAGE_KEY);
+      init();
+    }
+
+    function escapeHtml(str = "") {
+      return String(str)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    document.getElementById("btnAdd").addEventListener("click", addRow);
+    document.getElementById("btnLimpiar").addEventListener("click", clearAll);
+    document.getElementById("btnPrint").addEventListener("click", () => window.print());
+    document.getElementById("btnGuardar").addEventListener("click", () => {
+      alert("Datos guardados correctamente.");
     });
 
-    document.getElementById("totalKilos").textContent = fmtNumber(totalKilos);
-    document.getElementById("totalFactura").textContent = fmtMoney(totalFactura);
-    document.getElementById("totalDia").textContent = fmtMoney(totalDia);
-    document.getElementById("totalOperacion").textContent = fmtMoney(totalOperacion);
+    tbody.addEventListener("input", (e) => {
+      const target = e.target;
+      const id = target.dataset.id;
+      const field = target.dataset.field;
+      if (!id || !field) return;
+      updateField(id, field, target.value);
+    });
 
-    document.getElementById("kpiKilos").textContent = fmtNumber(totalKilos) + " kg";
-    document.getElementById("kpiFactura").textContent = fmtMoney(totalFactura);
-    document.getElementById("kpiDia").textContent = fmtMoney(totalDia);
-    document.getElementById("kpiOperacion").textContent = fmtMoney(totalOperacion);
-  }
+    tbody.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-delete]");
+      if (!btn) return;
+      const id = btn.dataset.delete;
+      deleteRow(id);
+    });
 
-  function updateField(id, field, value) {
-    const rows = getData();
-    const row = rows.find(r => r.id === id);
-    if (!row) return;
-
-    if (field === "kilos" || field === "precioKg") {
-      row[field] = parseNum(value);
-    } else {
-      row[field] = value;
+    function init() {
+      const rows = getData();
+      if (!rows.length) {
+        const seed = [
+          createRow({
+            viaje: "KG FACTURA 09-04-26",
+            fecha: "2026-04-09",
+            kilos: 99610,
+            precioKg: 3.60,
+            costoDia: 55634.19
+          }),
+          createRow({
+            viaje: "KG FACTURA 10-04-26",
+            fecha: "2026-04-10",
+            kilos: 108610.8,
+            precioKg: 3.60,
+            costoDia: 57925.77
+          })
+        ];
+        saveData(seed);
+      }
+      render();
     }
 
-    saveData(rows);
-    render();
-  }
-
-  function addRow() {
-    const rows = getData();
-    rows.push(createRow());
-    saveData(rows);
-    render();
-  }
-
-  function deleteRow(id) {
-    const rows = getData().filter(r => r.id !== id);
-    saveData(rows);
-    render();
-  }
-
-  function clearAll() {
-    if (!confirm("¿Borrar todo?")) return;
-    localStorage.removeItem(STORAGE_KEY);
     init();
-  }
-
-  document.getElementById("btnAdd").onclick = addRow;
-  document.getElementById("btnLimpiar").onclick = clearAll;
-  document.getElementById("btnPrint").onclick = () => window.print();
-
-  tbody.addEventListener("input", e => {
-    const id = e.target.dataset.id;
-    const field = e.target.dataset.field;
-    if (id && field) updateField(id, field, e.target.value);
-  });
-
-  tbody.addEventListener("click", e => {
-    if (e.target.dataset.delete) {
-      deleteRow(e.target.dataset.delete);
-    }
-  });
-
-  function init() {
-    if (!getData().length) {
-      saveData([
-        createRow({ viaje: "KG FACTURA 09-04-26", kilos: 99610, precioKg: 3.60 }),
-        createRow({ viaje: "KG FACTURA 10-04-26", kilos: 108610.8, precioKg: 3.60 })
-      ]);
-    }
-    render();
-  }
-
-  init();
-</script>
+  </script>
+</body>
+</html>
