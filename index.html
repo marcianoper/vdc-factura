@@ -416,6 +416,11 @@
             </div>
 
             <div class="kpi dark">
+              <div class="label">Total operación actual</div>
+              <div class="value" id="kpiOperacionActual">$0.00</div>
+            </div>
+
+            <div class="kpi dark">
               <div class="label">Total operación</div>
               <div class="value" id="kpiOperacion">$0.00</div>
             </div>
@@ -447,6 +452,8 @@
     const SUPABASE_URL = "https://lujroedkbgffobyblbie.supabase.co";
     const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx1anJvZWRrYmdmZm9ieWJsYmllIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUxODkzNDgsImV4cCI6MjA3MDc2NTM0OH0.bSbBZeS59aPSEGPj1YGcmZCyQTfgf3fz9pNDuR2ID7c";
     const TABLE = "viajes_operacion";
+    const TABLE_RESUMEN = "resumen_operacion_actual";
+    const RESUMEN_CLAVE = "operacion_actual";
     const COSTO_DIA_FIJO = 57925.77;
 
     const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -460,6 +467,7 @@
     let isRendering = false;
     let debounceTimers = {};
     let channel = null;
+    let resumenChannel = null;
 
     const fmtMoney = (n) => {
       const num = Number(n || 0);
@@ -544,6 +552,81 @@
       const costoFactura = kilos * precioKg;
       const totalOperacion = costoFactura + costoDia;
       return { costoFactura, totalOperacion, costoDia };
+    }
+
+    function sortRowsByFecha(rows = []) {
+      return [...rows].sort((a, b) => {
+        if ((a.fecha || "") !== (b.fecha || "")) {
+          return (a.fecha || "").localeCompare(b.fecha || "");
+        }
+        return String(a.created_at || "").localeCompare(String(b.created_at || ""));
+      });
+    }
+
+    function getUltimoViaje(rows = []) {
+      if (!rows.length) return null;
+      const ordered = sortRowsByFecha(rows);
+      return ordered[ordered.length - 1] || null;
+    }
+
+    async function saveOperacionActualSnapshot() {
+      const ultimo = getUltimoViaje(rowsState);
+
+      if (!ultimo) {
+        const { error } = await sb
+          .from(TABLE_RESUMEN)
+          .upsert({
+            clave: RESUMEN_CLAVE,
+            fecha_viaje: null,
+            viaje: null,
+            total_operacion: 0,
+            total_factura: 0,
+            total_kilos: 0,
+            costo_dia: 0
+          }, { onConflict: "clave" });
+
+        if (error) {
+          console.error("Error guardando resumen vacío:", error);
+        }
+        return;
+      }
+
+      const { costoFactura, totalOperacion, costoDia } = calcRow(ultimo);
+
+      const payload = {
+        clave: RESUMEN_CLAVE,
+        fecha_viaje: ultimo.fecha || null,
+        viaje: ultimo.viaje || null,
+        total_operacion: Number(totalOperacion || 0),
+        total_factura: Number(costoFactura || 0),
+        total_kilos: Number(ultimo.kilos || 0),
+        costo_dia: Number(costoDia || 0)
+      };
+
+      const { error } = await sb
+        .from(TABLE_RESUMEN)
+        .upsert(payload, { onConflict: "clave" });
+
+      if (error) {
+        console.error("Error guardando resumen_operacion_actual:", error);
+      }
+    }
+
+    async function loadOperacionActualSnapshot() {
+      const { data, error } = await sb
+        .from(TABLE_RESUMEN)
+        .select("*")
+        .eq("clave", RESUMEN_CLAVE)
+        .maybeSingle();
+
+      if (error) {
+        console.error("Error cargando resumen_operacion_actual:", error);
+        return;
+      }
+
+      const el = document.getElementById("kpiOperacionActual");
+      if (!el) return;
+      el.textContent = fmtMoney(data?.total_operacion || 0);
     }
 
     function buildRowHTML(row) {
@@ -689,6 +772,13 @@
       document.getElementById("kpiFactura").textContent = fmtMoney(totalFactura);
       document.getElementById("kpiDia").textContent = fmtMoney(totalDia);
       document.getElementById("kpiOperacion").textContent = fmtMoney(totalOperacion);
+
+      const ultimo = getUltimoViaje(rowsState);
+      const totalOperacionActual = ultimo ? calcRow(ultimo).totalOperacion : 0;
+      const elActual = document.getElementById("kpiOperacionActual");
+      if (elActual) {
+        elActual.textContent = fmtMoney(totalOperacionActual);
+      }
     }
 
     async function loadRows() {
@@ -715,6 +805,9 @@
       if (!rowsState.length) {
         await seedIfEmpty();
       }
+
+      await saveOperacionActualSnapshot();
+      await loadOperacionActualSnapshot();
     }
 
     async function seedIfEmpty() {
@@ -769,6 +862,8 @@
       }
 
       setSaveState("Guardado", "info");
+      await saveOperacionActualSnapshot();
+      await loadOperacionActualSnapshot();
     }
 
     async function deleteRow(id) {
@@ -785,7 +880,12 @@
         return;
       }
 
+      rowsState = rowsState.filter(r => r.id !== id);
+      render();
+
       setSaveState("Eliminado", "info");
+      await saveOperacionActualSnapshot();
+      await loadOperacionActualSnapshot();
     }
 
     async function clearAll() {
@@ -805,7 +905,12 @@
         return;
       }
 
+      rowsState = [];
+      render();
+
       setSaveState("Tabla vacía", "info");
+      await saveOperacionActualSnapshot();
+      await loadOperacionActualSnapshot();
     }
 
     function patchLocalState(id, patch) {
@@ -855,6 +960,8 @@
         }
 
         setSaveState("Guardado", "info");
+        await saveOperacionActualSnapshot();
+        await loadOperacionActualSnapshot();
       }, 350);
     }
 
@@ -866,7 +973,7 @@
         .on(
           "postgres_changes",
           { event: "*", schema: "public", table: TABLE },
-          (payload) => {
+          async (payload) => {
             const { eventType, new: newRow, old: oldRow } = payload;
 
             if (eventType === "INSERT") {
@@ -908,6 +1015,9 @@
               rowsState = rowsState.filter(r => r.id !== id);
               render();
             }
+
+            await saveOperacionActualSnapshot();
+            await loadOperacionActualSnapshot();
           }
         )
         .subscribe((status) => {
@@ -919,6 +1029,19 @@
             setRealtimeStatus("syncing", `Realtime: ${status}`);
           }
         });
+    }
+
+    function subscribeResumenRealtime() {
+      resumenChannel = sb
+        .channel("rt-resumen-operacion-actual")
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: TABLE_RESUMEN },
+          async () => {
+            await loadOperacionActualSnapshot();
+          }
+        )
+        .subscribe();
     }
 
     document.getElementById("btnAdd").addEventListener("click", addRow);
@@ -952,6 +1075,8 @@
     async function init() {
       await loadRows();
       subscribeRealtime();
+      subscribeResumenRealtime();
+      await loadOperacionActualSnapshot();
     }
 
     init();
