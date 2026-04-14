@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Control de Viajes y Operación</title>
 
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
   <style>
     :root{
       --brand:#0a7a3b;
@@ -19,6 +21,7 @@
       --danger:#b91c1c;
       --warn:#b45309;
       --ok:#166534;
+      --info:#0ea5e9;
       --r:18px;
     }
 
@@ -80,6 +83,7 @@
       padding:18px 20px;
       border-bottom:1px solid var(--line);
       background:#fcfcfd;
+      flex-wrap:wrap;
     }
 
     .card-head h2{
@@ -167,6 +171,15 @@
       background:#fafafa;
     }
 
+    tbody tr.sync-flash{
+      animation: flashSync .8s ease;
+    }
+
+    @keyframes flashSync{
+      0%{ background:#e0f2fe; }
+      100%{ background:transparent; }
+    }
+
     tfoot td{
       padding:14px 12px;
       border-top:2px solid var(--line);
@@ -174,7 +187,7 @@
       background:#fcfcfd;
     }
 
-    input, select{
+    input{
       width:100%;
       border:1px solid #dbe2ea;
       background:#fff;
@@ -254,11 +267,42 @@
       border:1px solid #ccebd9;
     }
 
+    .pill.info{
+      background:#eff6ff;
+      color:#1d4ed8;
+      border:1px solid #bfdbfe;
+    }
+
+    .pill.warn{
+      background:#fff7ed;
+      color:#b45309;
+      border:1px solid #fed7aa;
+    }
+
     .footer-note{
       margin-top:18px;
       color:var(--muted);
       font-size:.9rem;
     }
+
+    .status-bar{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      flex-wrap:wrap;
+    }
+
+    .dot{
+      width:10px;
+      height:10px;
+      border-radius:999px;
+      background:#94a3b8;
+      display:inline-block;
+    }
+
+    .dot.online{ background:#22c55e; box-shadow:0 0 0 4px rgba(34,197,94,.15); }
+    .dot.syncing{ background:#0ea5e9; box-shadow:0 0 0 4px rgba(14,165,233,.15); }
+    .dot.error{ background:#ef4444; box-shadow:0 0 0 4px rgba(239,68,68,.15); }
 
     @media (max-width: 1080px){
       .grid{
@@ -267,14 +311,8 @@
     }
 
     @media print{
-      body{
-        background:#fff;
-      }
-      .hero,
-      .toolbar,
-      .no-print{
-        display:none !important;
-      }
+      body{ background:#fff; }
+      .hero, .toolbar, .no-print, .status-bar{ display:none !important; }
       .card{
         box-shadow:none;
         border:1px solid #ddd;
@@ -292,7 +330,7 @@
       <h1>Control de Viajes y Total de Operación</h1>
       <p>
         Captura los kilos de factura y el precio por kilo de cada viaje.
-        El sistema calcula automáticamente el costo factura y el total de operación.
+        Todo se guarda en Supabase y se refleja en tiempo real en cualquier dispositivo.
       </p>
     </section>
 
@@ -300,9 +338,17 @@
       <section class="card">
         <div class="card-head">
           <h2>Viajes capturados</h2>
+
+          <div class="status-bar">
+            <span class="pill info">
+              <span class="dot" id="rtDot"></span>
+              <span id="rtText">Conectando realtime...</span>
+            </span>
+            <span class="pill warn" id="saveState">Sin cambios</span>
+          </div>
+
           <div class="toolbar no-print">
             <button class="btn-primary" id="btnAdd">+ Agregar viaje</button>
-            <button class="btn-soft" id="btnGuardar">Guardar</button>
             <button class="btn-dark" id="btnPrint">Imprimir</button>
             <button class="btn-danger" id="btnLimpiar">Limpiar todo</button>
           </div>
@@ -339,7 +385,7 @@
           </div>
 
           <div class="helper">
-            Fórmula usada por cada viaje:
+            Fórmula por viaje:
             <strong>Costo factura = kilos factura × precio por kg</strong><br>
             <strong>Total operación = costo factura + costo día</strong><br>
             <strong>Costo día fijo = $57,925.77</strong>
@@ -382,10 +428,10 @@
           </div>
           <div class="card-body">
             <p class="helper" style="margin-top:0;">
-              Este formato te sirve para registrar varios viajes en un mismo día o en distintos días.
+              Cada cambio que hagas aquí se guarda en la base y se refleja en los demás equipos abiertos.
             </p>
             <p class="helper">
-              Más adelante se puede conectar con tu sistema para que este total de operación alimente otros módulos, como costos, inventario o utilidad final.
+              Puedes usar esta misma base para luego conectar módulos de costos, utilidad, inventario o reportes.
             </p>
           </div>
         </section>
@@ -393,15 +439,27 @@
     </div>
 
     <div class="footer-note">
-      Archivo local listo para usar. Los datos se guardan automáticamente en tu navegador.
+      Ya no usa localStorage como base principal. Ahora trabaja contra Supabase en tiempo real.
     </div>
   </div>
 
   <script>
-    const STORAGE_KEY = "vdc_viajes_operacion_v2";
+    const SUPABASE_URL = "https://lujroedkbgffobyblbie.supabase.co";
+    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx1anJvZWRrYmdmZm9ieWJsYmllIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUxODkzNDgsImV4cCI6MjA3MDc2NTM0OH0.bSbBZeS59aPSEGPj1YGcmZCyQTfgf3fz9pNDuR2ID7c";
+    const TABLE = "viajes_operacion";
     const COSTO_DIA_FIJO = 57925.77;
 
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
     const tbody = document.getElementById("tbodyViajes");
+    const rtDot = document.getElementById("rtDot");
+    const rtText = document.getElementById("rtText");
+    const saveState = document.getElementById("saveState");
+
+    let rowsState = [];
+    let isRendering = false;
+    let debounceTimers = {};
+    let channel = null;
 
     const fmtMoney = (n) => {
       const num = Number(n || 0);
@@ -437,16 +495,19 @@
         .replaceAll("'", "&#039;");
     }
 
-    function getData() {
-      try {
-        return JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
-      } catch {
-        return [];
-      }
+    function setRealtimeStatus(mode, text) {
+      rtDot.className = "dot";
+      if (mode === "online") rtDot.classList.add("online");
+      if (mode === "syncing") rtDot.classList.add("syncing");
+      if (mode === "error") rtDot.classList.add("error");
+      rtText.textContent = text;
     }
 
-    function saveData(data) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    function setSaveState(text, type = "warn") {
+      saveState.textContent = text;
+      saveState.className = "pill";
+      if (type === "info") saveState.classList.add("info");
+      if (type === "warn") saveState.classList.add("warn");
     }
 
     function formatDateForViaje(fecha) {
@@ -461,25 +522,25 @@
       return f ? `KG FACTURA ${f}` : "KG FACTURA";
     }
 
-    function createRow(data = {}) {
+    function normalizeRow(data = {}) {
       const fecha = data.fecha || new Date().toISOString().slice(0, 10);
-      const viajeGenerado = buildViajeName(fecha);
-
       return {
-        id: data.id || crypto.randomUUID(),
+        id: data.id,
         fecha,
-        viaje: data.viaje || viajeGenerado,
-        viajeManual: data.viajeManual || false,
+        viaje: data.viaje || buildViajeName(fecha),
+        viaje_manual: !!data.viaje_manual,
         kilos: Number(data.kilos || 0),
-        precioKg: Number(data.precioKg || 0),
-        costoDia: COSTO_DIA_FIJO
+        precio_kg: Number(data.precio_kg || 0),
+        costo_dia: Number(data.costo_dia || COSTO_DIA_FIJO),
+        created_at: data.created_at || null,
+        updated_at: data.updated_at || null
       };
     }
 
     function calcRow(row) {
       const kilos = Number(row.kilos || 0);
-      const precioKg = Number(row.precioKg || 0);
-      const costoDia = COSTO_DIA_FIJO;
+      const precioKg = Number(row.precio_kg || 0);
+      const costoDia = Number(row.costo_dia || COSTO_DIA_FIJO);
       const costoFactura = kilos * precioKg;
       const totalOperacion = costoFactura + costoDia;
       return { costoFactura, totalOperacion, costoDia };
@@ -512,7 +573,7 @@
             step="0.01"
             min="0"
             class="num"
-            value="${row.kilos || row.kilos === 0 ? row.kilos : ""}"
+            value="${row.kilos ?? 0}"
             data-field="kilos"
             data-id="${row.id}"
             placeholder="0.00"
@@ -524,8 +585,8 @@
             step="0.0001"
             min="0"
             class="num"
-            value="${row.precioKg || row.precioKg === 0 ? row.precioKg : ""}"
-            data-field="precioKg"
+            value="${row.precio_kg ?? 0}"
+            data-field="precio_kg"
             data-id="${row.id}"
             placeholder="0.0000"
           />
@@ -563,10 +624,16 @@
     }
 
     function render() {
-      const rows = getData();
+      isRendering = true;
+      const previousFocus = document.activeElement;
+      const focusedId = previousFocus?.dataset?.id || null;
+      const focusedField = previousFocus?.dataset?.field || null;
+      const selectionStart = typeof previousFocus?.selectionStart === "number" ? previousFocus.selectionStart : null;
+      const selectionEnd = typeof previousFocus?.selectionEnd === "number" ? previousFocus.selectionEnd : null;
+
       tbody.innerHTML = "";
 
-      rows.forEach((row) => {
+      rowsState.forEach((row) => {
         const tr = document.createElement("tr");
         tr.dataset.rowId = row.id;
         tr.innerHTML = buildRowHTML(row);
@@ -574,17 +641,37 @@
       });
 
       updateTotals();
+
+      if (focusedId && focusedField) {
+        const el = tbody.querySelector(`[data-id="${focusedId}"][data-field="${focusedField}"]`);
+        if (el) {
+          el.focus();
+          try {
+            if (selectionStart !== null && selectionEnd !== null && el.type !== "date") {
+              el.setSelectionRange(selectionStart, selectionEnd);
+            }
+          } catch {}
+        }
+      }
+
+      isRendering = false;
+    }
+
+    function flashRow(id) {
+      const tr = tbody.querySelector(`tr[data-row-id="${id}"]`);
+      if (!tr) return;
+      tr.classList.remove("sync-flash");
+      void tr.offsetWidth;
+      tr.classList.add("sync-flash");
     }
 
     function updateTotals() {
-      const rows = getData();
-
       let totalKilos = 0;
       let totalFactura = 0;
       let totalDia = 0;
       let totalOperacion = 0;
 
-      rows.forEach((row) => {
+      rowsState.forEach((row) => {
         const { costoFactura, totalOperacion: totalOp, costoDia } = calcRow(row);
         totalKilos += Number(row.kilos || 0);
         totalFactura += costoFactura;
@@ -603,145 +690,258 @@
       document.getElementById("kpiOperacion").textContent = fmtMoney(totalOperacion);
     }
 
-    function updateSingleRowInDOM(id) {
-      const rows = getData();
-      const row = rows.find(r => r.id === id);
+    async function loadRows() {
+      setRealtimeStatus("syncing", "Cargando viajes...");
+      const { data, error } = await supabase
+        .from(TABLE)
+        .select("*")
+        .order("fecha", { ascending: true })
+        .order("created_at", { ascending: true });
+
+      if (error) {
+        console.error(error);
+        setRealtimeStatus("error", "Error al cargar");
+        alert("No se pudieron cargar los viajes desde Supabase.");
+        return;
+      }
+
+      rowsState = (data || []).map(normalizeRow);
+      render();
+      setRealtimeStatus("online", "Realtime activo");
+      setSaveState("Sin cambios", "warn");
+
+      if (!rowsState.length) {
+        await seedIfEmpty();
+      }
+    }
+
+    async function seedIfEmpty() {
+      const seed = [
+        {
+          fecha: "2026-04-09",
+          viaje: "KG FACTURA 09-04-26",
+          viaje_manual: false,
+          kilos: 99610,
+          precio_kg: 3.60,
+          costo_dia: COSTO_DIA_FIJO
+        },
+        {
+          fecha: "2026-04-10",
+          viaje: "KG FACTURA 10-04-26",
+          viaje_manual: false,
+          kilos: 108610.8,
+          precio_kg: 3.60,
+          costo_dia: COSTO_DIA_FIJO
+        }
+      ];
+
+      const { error } = await supabase.from(TABLE).insert(seed);
+      if (error) {
+        console.error("Error sembrando datos iniciales:", error);
+      }
+    }
+
+    async function addRow() {
+      setSaveState("Guardando...", "info");
+
+      const fecha = new Date().toISOString().slice(0, 10);
+      const viaje = buildViajeName(fecha);
+
+      const payload = {
+        fecha,
+        viaje,
+        viaje_manual: false,
+        kilos: 0,
+        precio_kg: 0,
+        costo_dia: COSTO_DIA_FIJO
+      };
+
+      const { error } = await supabase.from(TABLE).insert(payload);
+
+      if (error) {
+        console.error(error);
+        setSaveState("Error al guardar", "warn");
+        alert("No se pudo agregar el viaje.");
+        return;
+      }
+
+      setSaveState("Guardado", "info");
+    }
+
+    async function deleteRow(id) {
+      if (!confirm("¿Seguro que quieres eliminar este viaje?")) return;
+
+      setSaveState("Eliminando...", "info");
+
+      const { error } = await supabase.from(TABLE).delete().eq("id", id);
+
+      if (error) {
+        console.error(error);
+        setSaveState("Error al eliminar", "warn");
+        alert("No se pudo eliminar el viaje.");
+        return;
+      }
+
+      setSaveState("Eliminado", "info");
+    }
+
+    async function clearAll() {
+      if (!confirm("¿Seguro que quieres borrar todos los viajes capturados?")) return;
+
+      setSaveState("Eliminando todo...", "info");
+
+      const { error } = await supabase.from(TABLE).delete().neq("id", "00000000-0000-0000-0000-000000000000");
+
+      if (error) {
+        console.error(error);
+        setSaveState("Error al limpiar", "warn");
+        alert("No se pudo limpiar la tabla.");
+        return;
+      }
+
+      setSaveState("Tabla vacía", "info");
+    }
+
+    function patchLocalState(id, patch) {
+      const idx = rowsState.findIndex(r => r.id === id);
+      if (idx === -1) return;
+      rowsState[idx] = normalizeRow({ ...rowsState[idx], ...patch });
+      render();
+    }
+
+    function queueUpdate(id, field, value) {
+      const row = rowsState.find(r => r.id === id);
       if (!row) return;
 
-      const tr = tbody.querySelector(`tr[data-row-id="${id}"]`);
-      if (!tr) return;
+      let patch = {};
 
-      const active = document.activeElement;
-      const activeField = active?.dataset?.field;
-      const activeId = active?.dataset?.id;
-      const selectionStart = active && typeof active.selectionStart === "number" ? active.selectionStart : null;
-      const selectionEnd = active && typeof active.selectionEnd === "number" ? active.selectionEnd : null;
-
-      tr.innerHTML = buildRowHTML(row);
-
-      if (activeId === id && activeField) {
-        const nextInput = tr.querySelector(`[data-id="${id}"][data-field="${activeField}"]`);
-        if (nextInput) {
-          nextInput.focus();
-          try {
-            if (selectionStart !== null && selectionEnd !== null && nextInput.type !== "date") {
-              nextInput.setSelectionRange(selectionStart, selectionEnd);
-            }
-          } catch {}
-        }
-      }
-
-      updateTotals();
-    }
-
-    function addRow() {
-      const rows = getData();
-      rows.push(createRow());
-      saveData(rows);
-      render();
-    }
-
-    function deleteRow(id) {
-      const rows = getData().filter(r => r.id !== id);
-      saveData(rows);
-      render();
-    }
-
-    function clearAll() {
-      if (!confirm("¿Seguro que quieres borrar todos los viajes capturados?")) return;
-      localStorage.removeItem(STORAGE_KEY);
-      init();
-    }
-
-    function updateField(id, field, value) {
-      const rows = getData();
-      const idx = rows.findIndex(r => r.id === id);
-      if (idx === -1) return;
-
-      const row = rows[idx];
-
-      if (field === "kilos" || field === "precioKg") {
-        row[field] = parseNum(value);
+      if (field === "kilos" || field === "precio_kg") {
+        patch[field] = parseNum(value);
       } else if (field === "fecha") {
-        row.fecha = value;
-        if (!row.viajeManual) {
-          row.viaje = buildViajeName(value);
+        patch.fecha = value;
+        if (!row.viaje_manual) {
+          patch.viaje = buildViajeName(value);
         }
       } else if (field === "viaje") {
-        row.viaje = value;
-        row.viajeManual = value.trim() !== "" && value.trim() !== buildViajeName(row.fecha);
+        const texto = value;
+        patch.viaje = texto;
+        patch.viaje_manual = texto.trim() !== "" && texto.trim() !== buildViajeName(row.fecha);
       } else {
-        row[field] = value;
+        patch[field] = value;
       }
 
-      row.costoDia = COSTO_DIA_FIJO;
+      patch.costo_dia = COSTO_DIA_FIJO;
 
-      saveData(rows);
-      updateSingleRowInDOM(id);
+      patchLocalState(id, patch);
+      setSaveState("Guardando...", "info");
+
+      clearTimeout(debounceTimers[id]);
+      debounceTimers[id] = setTimeout(async () => {
+        const { error } = await supabase
+          .from(TABLE)
+          .update(patch)
+          .eq("id", id);
+
+        if (error) {
+          console.error(error);
+          setSaveState("Error al guardar", "warn");
+          return;
+        }
+
+        setSaveState("Guardado", "info");
+      }, 350);
+    }
+
+    function subscribeRealtime() {
+      setRealtimeStatus("syncing", "Suscribiendo realtime...");
+
+      channel = supabase
+        .channel("rt-viajes-operacion")
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: TABLE },
+          (payload) => {
+            const { eventType, new: newRow, old: oldRow } = payload;
+
+            if (eventType === "INSERT") {
+              const row = normalizeRow(newRow);
+              const exists = rowsState.some(r => r.id === row.id);
+              if (!exists) {
+                rowsState.push(row);
+                rowsState.sort((a, b) => {
+                  if (a.fecha !== b.fecha) return a.fecha.localeCompare(b.fecha);
+                  return String(a.created_at || "").localeCompare(String(b.created_at || ""));
+                });
+                render();
+                flashRow(row.id);
+              }
+            }
+
+            if (eventType === "UPDATE") {
+              const row = normalizeRow(newRow);
+              const idx = rowsState.findIndex(r => r.id === row.id);
+              if (idx >= 0) {
+                rowsState[idx] = row;
+              } else {
+                rowsState.push(row);
+              }
+              rowsState.sort((a, b) => {
+                if (a.fecha !== b.fecha) return a.fecha.localeCompare(b.fecha);
+                return String(a.created_at || "").localeCompare(String(b.created_at || ""));
+              });
+              render();
+              flashRow(row.id);
+            }
+
+            if (eventType === "DELETE") {
+              const id = oldRow.id;
+              rowsState = rowsState.filter(r => r.id !== id);
+              render();
+            }
+          }
+        )
+        .subscribe((status) => {
+          if (status === "SUBSCRIBED") {
+            setRealtimeStatus("online", "Realtime activo");
+          } else if (status === "CHANNEL_ERROR") {
+            setRealtimeStatus("error", "Error de realtime");
+          } else {
+            setRealtimeStatus("syncing", `Realtime: ${status}`);
+          }
+        });
     }
 
     document.getElementById("btnAdd").addEventListener("click", addRow);
     document.getElementById("btnLimpiar").addEventListener("click", clearAll);
     document.getElementById("btnPrint").addEventListener("click", () => window.print());
-    document.getElementById("btnGuardar").addEventListener("click", () => {
-      const rows = getData().map(r => ({ ...r, costoDia: COSTO_DIA_FIJO }));
-      saveData(rows);
-      alert("Datos guardados correctamente.");
-    });
 
     tbody.addEventListener("input", (e) => {
+      if (isRendering) return;
       const target = e.target;
       const id = target.dataset.id;
       const field = target.dataset.field;
       if (!id || !field) return;
-      updateField(id, field, target.value);
+      queueUpdate(id, field, target.value);
     });
 
     tbody.addEventListener("change", (e) => {
+      if (isRendering) return;
       const target = e.target;
       const id = target.dataset.id;
       const field = target.dataset.field;
       if (!id || !field) return;
-      updateField(id, field, target.value);
+      queueUpdate(id, field, target.value);
     });
 
     tbody.addEventListener("click", (e) => {
       const btn = e.target.closest("[data-delete]");
       if (!btn) return;
-      const id = btn.dataset.delete;
-      deleteRow(id);
+      deleteRow(btn.dataset.delete);
     });
 
-    function init() {
-      const rows = getData();
-
-      if (!rows.length) {
-        const seed = [
-          createRow({
-            fecha: "2026-04-09",
-            kilos: 99610,
-            precioKg: 3.60
-          }),
-          createRow({
-            fecha: "2026-04-10",
-            kilos: 108610.8,
-            precioKg: 3.60
-          })
-        ];
-        saveData(seed);
-      } else {
-        const normalized = rows.map(r => {
-          const row = createRow(r);
-          row.costoDia = COSTO_DIA_FIJO;
-          if (!row.viaje || row.viaje.trim() === "") {
-            row.viaje = buildViajeName(row.fecha);
-          }
-          return row;
-        });
-        saveData(normalized);
-      }
-
-      render();
+    async function init() {
+      await loadRows();
+      subscribeRealtime();
     }
 
     init();
