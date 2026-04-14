@@ -449,7 +449,7 @@
     const TABLE = "viajes_operacion";
     const COSTO_DIA_FIJO = 57925.77;
 
-    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
     const tbody = document.getElementById("tbodyViajes");
     const rtDot = document.getElementById("rtDot");
@@ -625,6 +625,7 @@
 
     function render() {
       isRendering = true;
+
       const previousFocus = document.activeElement;
       const focusedId = previousFocus?.dataset?.id || null;
       const focusedField = previousFocus?.dataset?.field || null;
@@ -692,7 +693,8 @@
 
     async function loadRows() {
       setRealtimeStatus("syncing", "Cargando viajes...");
-      const { data, error } = await supabase
+
+      const { data, error } = await sb
         .from(TABLE)
         .select("*")
         .order("fecha", { ascending: true })
@@ -735,7 +737,8 @@
         }
       ];
 
-      const { error } = await supabase.from(TABLE).insert(seed);
+      const { error } = await sb.from(TABLE).insert(seed);
+
       if (error) {
         console.error("Error sembrando datos iniciales:", error);
       }
@@ -756,7 +759,7 @@
         costo_dia: COSTO_DIA_FIJO
       };
 
-      const { error } = await supabase.from(TABLE).insert(payload);
+      const { error } = await sb.from(TABLE).insert(payload);
 
       if (error) {
         console.error(error);
@@ -773,7 +776,7 @@
 
       setSaveState("Eliminando...", "info");
 
-      const { error } = await supabase.from(TABLE).delete().eq("id", id);
+      const { error } = await sb.from(TABLE).delete().eq("id", id);
 
       if (error) {
         console.error(error);
@@ -790,7 +793,10 @@
 
       setSaveState("Eliminando todo...", "info");
 
-      const { error } = await supabase.from(TABLE).delete().neq("id", "00000000-0000-0000-0000-000000000000");
+      const { error } = await sb
+        .from(TABLE)
+        .delete()
+        .neq("id", "00000000-0000-0000-0000-000000000000");
 
       if (error) {
         console.error(error);
@@ -837,7 +843,7 @@
 
       clearTimeout(debounceTimers[id]);
       debounceTimers[id] = setTimeout(async () => {
-        const { error } = await supabase
+        const { error } = await sb
           .from(TABLE)
           .update(patch)
           .eq("id", id);
@@ -855,7 +861,7 @@
     function subscribeRealtime() {
       setRealtimeStatus("syncing", "Suscribiendo realtime...");
 
-      channel = supabase
+      channel = sb
         .channel("rt-viajes-operacion")
         .on(
           "postgres_changes",
@@ -866,6 +872,7 @@
             if (eventType === "INSERT") {
               const row = normalizeRow(newRow);
               const exists = rowsState.some(r => r.id === row.id);
+
               if (!exists) {
                 rowsState.push(row);
                 rowsState.sort((a, b) => {
@@ -880,15 +887,18 @@
             if (eventType === "UPDATE") {
               const row = normalizeRow(newRow);
               const idx = rowsState.findIndex(r => r.id === row.id);
+
               if (idx >= 0) {
                 rowsState[idx] = row;
               } else {
                 rowsState.push(row);
               }
+
               rowsState.sort((a, b) => {
                 if (a.fecha !== b.fecha) return a.fecha.localeCompare(b.fecha);
                 return String(a.created_at || "").localeCompare(String(b.created_at || ""));
               });
+
               render();
               flashRow(row.id);
             }
