@@ -1,0 +1,1118 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Control de Viajes y Operación</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <style>
+    :root{
+      --brand:#0a7a3b;
+      --brand2:#0f9a52;
+      --bg:#f6f7f8;
+      --card:#ffffff;
+      --ink:#0f172a;
+      --muted:#64748b;
+      --line:#e5e7eb;
+      --shadow:0 18px 50px rgba(2,6,23,.10);
+      --shadow2:0 10px 24px rgba(2,6,23,.08);
+      --danger:#b91c1c;
+      --warn:#b45309;
+      --ok:#166534;
+      --info:#0ea5e9;
+      --r:18px;
+    }
+
+    *{ box-sizing:border-box; }
+    html,body{ margin:0; padding:0; }
+    body{
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      background:var(--bg);
+      color:var(--ink);
+    }
+
+    .wrap{
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+
+    .hero{
+      background: linear-gradient(135deg, var(--brand), var(--brand2));
+      color:#fff;
+      border-radius: 24px;
+      padding: 28px;
+      box-shadow: var(--shadow);
+      margin-bottom: 22px;
+    }
+
+    .hero h1{
+      margin:0 0 8px;
+      font-size: clamp(1.8rem, 3vw, 2.6rem);
+      line-height:1.1;
+    }
+
+    .hero p{
+      margin:0;
+      opacity:.95;
+      font-size: 1rem;
+    }
+
+    .grid{
+      display:grid;
+      grid-template-columns: 1.25fr .75fr;
+      gap:20px;
+      align-items:start;
+    }
+
+    .card{
+      background:var(--card);
+      border:1px solid var(--line);
+      border-radius: var(--r);
+      box-shadow: var(--shadow2);
+      overflow:hidden;
+    }
+
+    .card-head{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:12px;
+      padding:18px 20px;
+      border-bottom:1px solid var(--line);
+      background:#fcfcfd;
+      flex-wrap:wrap;
+    }
+
+    .card-head h2{
+      margin:0;
+      font-size:1.05rem;
+    }
+
+    .card-body{
+      padding:18px 20px 20px;
+    }
+
+    .toolbar{
+      display:flex;
+      flex-wrap:wrap;
+      gap:10px;
+    }
+
+    button{
+      border:none;
+      border-radius:12px;
+      padding:12px 16px;
+      font-weight:700;
+      cursor:pointer;
+      transition:.18s ease;
+    }
+
+    .btn-primary{
+      background:var(--brand);
+      color:#fff;
+    }
+
+    .btn-primary:hover{ transform:translateY(-1px); }
+
+    .btn-soft{
+      background:#eefaf3;
+      color:var(--brand);
+      border:1px solid #ccebd9;
+    }
+
+    .btn-danger{
+      background:#fff1f2;
+      color:var(--danger);
+      border:1px solid #fecdd3;
+    }
+
+    .btn-dark{
+      background:#0f172a;
+      color:#fff;
+    }
+
+    .table-wrap{
+      width:100%;
+      overflow:auto;
+      border:1px solid var(--line);
+      border-radius:16px;
+    }
+
+    table{
+      width:100%;
+      border-collapse:collapse;
+      min-width:1050px;
+      background:#fff;
+    }
+
+    thead th{
+      background:#f8fafc;
+      color:#0f172a;
+      text-align:left;
+      font-size:.92rem;
+      padding:14px 12px;
+      border-bottom:1px solid var(--line);
+      position:sticky;
+      top:0;
+      z-index:2;
+      white-space:nowrap;
+    }
+
+    tbody td{
+      padding:10px 12px;
+      border-bottom:1px solid var(--line);
+      vertical-align:middle;
+    }
+
+    tbody tr:hover{
+      background:#fafafa;
+    }
+
+    tbody tr.sync-flash{
+      animation: flashSync .8s ease;
+    }
+
+    @keyframes flashSync{
+      0%{ background:#e0f2fe; }
+      100%{ background:transparent; }
+    }
+
+    tfoot td{
+      padding:14px 12px;
+      border-top:2px solid var(--line);
+      font-weight:800;
+      background:#fcfcfd;
+    }
+
+    input{
+      width:100%;
+      border:1px solid #dbe2ea;
+      background:#fff;
+      border-radius:12px;
+      padding:10px 12px;
+      font:inherit;
+      color:var(--ink);
+      outline:none;
+    }
+
+    input:focus{
+      border-color:var(--brand2);
+      box-shadow:0 0 0 4px rgba(15,154,82,.10);
+    }
+
+    .num{
+      text-align:right;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .readonly{
+      background:#f8fafc;
+      font-weight:700;
+    }
+
+    .summary{
+      display:grid;
+      gap:14px;
+    }
+
+    .kpi{
+      border:1px solid var(--line);
+      border-radius:18px;
+      padding:18px;
+      background:linear-gradient(180deg,#ffffff,#fbfbfc);
+    }
+
+    .kpi .label{
+      color:var(--muted);
+      font-size:.92rem;
+      margin-bottom:8px;
+    }
+
+    .kpi .value{
+      font-size:1.7rem;
+      font-weight:900;
+      line-height:1.1;
+      word-break:break-word;
+    }
+
+    .kpi.green .value{ color:var(--ok); }
+    .kpi.gold .value{ color:var(--warn); }
+    .kpi.dark .value{ color:#0f172a; }
+
+    .helper{
+      margin-top:10px;
+      color:var(--muted);
+      font-size:.92rem;
+      line-height:1.45;
+    }
+
+    .row-actions{
+      display:flex;
+      justify-content:center;
+    }
+
+    .pill{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      padding:8px 12px;
+      border-radius:999px;
+      font-size:.88rem;
+      font-weight:700;
+      background:#eefaf3;
+      color:var(--brand);
+      border:1px solid #ccebd9;
+    }
+
+    .pill.info{
+      background:#eff6ff;
+      color:#1d4ed8;
+      border:1px solid #bfdbfe;
+    }
+
+    .pill.warn{
+      background:#fff7ed;
+      color:#b45309;
+      border:1px solid #fed7aa;
+    }
+
+    .footer-note{
+      margin-top:18px;
+      color:var(--muted);
+      font-size:.9rem;
+    }
+
+    .status-bar{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      flex-wrap:wrap;
+    }
+
+    .dot{
+      width:10px;
+      height:10px;
+      border-radius:999px;
+      background:#94a3b8;
+      display:inline-block;
+    }
+
+    .dot.online{ background:#22c55e; box-shadow:0 0 0 4px rgba(34,197,94,.15); }
+    .dot.syncing{ background:#0ea5e9; box-shadow:0 0 0 4px rgba(14,165,233,.15); }
+    .dot.error{ background:#ef4444; box-shadow:0 0 0 4px rgba(239,68,68,.15); }
+
+    @media (max-width: 1080px){
+      .grid{
+        grid-template-columns:1fr;
+      }
+    }
+
+    @media print{
+      body{ background:#fff; }
+      .hero, .toolbar, .no-print, .status-bar{ display:none !important; }
+      .card{
+        box-shadow:none;
+        border:1px solid #ddd;
+      }
+      .wrap{
+        max-width:none;
+        padding:0;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <section class="hero">
+      <h1>Control de Viajes y Total de Operación</h1>
+      <p>
+        Captura los kilos de factura y el precio por kilo de cada viaje.
+        Todo se guarda en Supabase y se refleja en tiempo real en cualquier dispositivo.
+      </p>
+    </section>
+
+    <div class="grid">
+      <section class="card">
+        <div class="card-head">
+          <h2>Viajes capturados</h2>
+
+          <div class="status-bar">
+            <span class="pill info">
+              <span class="dot" id="rtDot"></span>
+              <span id="rtText">Conectando realtime...</span>
+            </span>
+            <span class="pill warn" id="saveState">Sin cambios</span>
+          </div>
+
+          <div class="toolbar no-print">
+            <button class="btn-primary" id="btnAdd">+ Agregar viaje</button>
+            <button class="btn-dark" id="btnPrint">Imprimir</button>
+            <button class="btn-danger" id="btnLimpiar">Limpiar todo</button>
+          </div>
+        </div>
+
+        <div class="card-body">
+          <div class="table-wrap">
+            <table id="tablaViajes">
+              <thead>
+                <tr>
+                  <th style="min-width:180px;">Viaje / Factura</th>
+                  <th style="min-width:140px;">Fecha</th>
+                  <th class="num" style="min-width:140px;">Kilos factura</th>
+                  <th class="num" style="min-width:140px;">Precio x kg</th>
+                  <th class="num" style="min-width:160px;">Costo factura</th>
+                  <th class="num" style="min-width:150px;">Costo día</th>
+                  <th class="num" style="min-width:180px;">Total operación</th>
+                  <th style="min-width:120px;">Acción</th>
+                </tr>
+              </thead>
+              <tbody id="tbodyViajes"></tbody>
+              <tfoot>
+                <tr>
+                  <td colspan="2"><strong>TOTALES</strong></td>
+                  <td class="num" id="totalKilos">0.00</td>
+                  <td></td>
+                  <td class="num" id="totalFactura">$0.00</td>
+                  <td class="num" id="totalDia">$0.00</td>
+                  <td class="num" id="totalOperacion">$0.00</td>
+                  <td></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+
+          <div class="helper">
+            Fórmula por viaje:
+            <strong>Costo factura = kilos factura × precio por kg</strong><br>
+            <strong>Total operación = costo factura + costo día</strong><br>
+            <strong>Costo día fijo = $70000</strong>
+          </div>
+        </div>
+      </section>
+
+      <aside class="summary">
+        <section class="card">
+          <div class="card-head">
+            <h2>Resumen general</h2>
+            <span class="pill">Cálculo automático</span>
+          </div>
+          <div class="card-body summary">
+            <div class="kpi dark">
+              <div class="label">Total kilos facturados</div>
+              <div class="value" id="kpiKilos">0.00 kg</div>
+            </div>
+
+            <div class="kpi green">
+              <div class="label">Total costo factura</div>
+              <div class="value" id="kpiFactura">$0.00</div>
+            </div>
+
+            <div class="kpi gold">
+              <div class="label">Total costo día</div>
+              <div class="value" id="kpiDia">$0.00</div>
+            </div>
+
+            <div class="kpi dark">
+              <div class="label">Total operación actual</div>
+              <div class="value" id="kpiOperacionActual">$0.00</div>
+            </div>
+
+            <div class="kpi dark">
+              <div class="label">Total operación</div>
+              <div class="value" id="kpiOperacion">$0.00</div>
+            </div>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card-head">
+            <h2>Notas</h2>
+          </div>
+          <div class="card-body">
+            <p class="helper" style="margin-top:0;">
+              Cada cambio que hagas aquí se guarda en la base y se refleja en los demás equipos abiertos.
+            </p>
+            <p class="helper">
+              Puedes usar esta misma base para luego conectar módulos de costos, utilidad, inventario o reportes.
+            </p>
+          </div>
+        </section>
+      </aside>
+    </div>
+
+    <div class="footer-note">
+      Ya no usa localStorage como base principal. Ahora trabaja contra Supabase en tiempo real.
+    </div>
+  </div>
+
+  <script>
+    const SUPABASE_URL = "https://lujroedkbgffobyblbie.supabase.co";
+    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx1anJvZWRrYmdmZm9ieWJsYmllIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUxODkzNDgsImV4cCI6MjA3MDc2NTM0OH0.bSbBZeS59aPSEGPj1YGcmZCyQTfgf3fz9pNDuR2ID7c";
+    const TABLE = "viajes_operacion";
+    const TABLE_RESUMEN = "resumen_operacion_actual";
+    const RESUMEN_CLAVE = "operacion_actual";
+    const COSTO_DIA_FIJO = 70000;
+
+    const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    const tbody = document.getElementById("tbodyViajes");
+    const rtDot = document.getElementById("rtDot");
+    const rtText = document.getElementById("rtText");
+    const saveState = document.getElementById("saveState");
+
+    let rowsState = [];
+    let debounceTimers = {};
+    let channel = null;
+    let resumenChannel = null;
+    let suppressRealtimeUntil = new Map();
+
+    const fmtMoney = (n) => {
+      const num = Number(n || 0);
+      return num.toLocaleString("es-MX", {
+        style: "currency",
+        currency: "MXN",
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+      });
+    };
+
+    const fmtNumber = (n, decimals = 2) => {
+      const num = Number(n || 0);
+      return num.toLocaleString("es-MX", {
+        minimumFractionDigits: decimals,
+        maximumFractionDigits: decimals
+      });
+    };
+
+    const parseNum = (value) => {
+      if (value === null || value === undefined || value === "") return 0;
+      const clean = String(value).replace(/[^0-9.\-]/g, "");
+      const n = parseFloat(clean);
+      return isNaN(n) ? 0 : n;
+    };
+
+    function escapeHtml(str = "") {
+      return String(str)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    function setRealtimeStatus(mode, text) {
+      rtDot.className = "dot";
+      if (mode === "online") rtDot.classList.add("online");
+      if (mode === "syncing") rtDot.classList.add("syncing");
+      if (mode === "error") rtDot.classList.add("error");
+      rtText.textContent = text;
+    }
+
+    function setSaveState(text, type = "warn") {
+      saveState.textContent = text;
+      saveState.className = "pill";
+      if (type === "info") saveState.classList.add("info");
+      if (type === "warn") saveState.classList.add("warn");
+    }
+
+    function formatDateForViaje(fecha) {
+      if (!fecha) return "";
+      const [year, month, day] = fecha.split("-");
+      if (!year || !month || !day) return "";
+      return `${day}-${month}-${year.slice(-2)}`;
+    }
+
+    function buildViajeName(fecha) {
+      const f = formatDateForViaje(fecha);
+      return f ? `KG FACTURA ${f}` : "KG FACTURA";
+    }
+
+    function normalizeRow(data = {}) {
+      const fecha = data.fecha || new Date().toISOString().slice(0, 10);
+      return {
+        id: data.id,
+        fecha,
+        viaje: data.viaje || buildViajeName(fecha),
+        viaje_manual: !!data.viaje_manual,
+        kilos: Number(data.kilos || 0),
+        precio_kg: Number(data.precio_kg || 0),
+        costo_dia: Number(data.costo_dia || COSTO_DIA_FIJO),
+        created_at: data.created_at || null,
+        updated_at: data.updated_at || null
+      };
+    }
+
+    function calcRow(row) {
+      const kilos = Number(row.kilos || 0);
+      const precioKg = Number(row.precio_kg || 0);
+      const costoDia = Number(row.costo_dia || COSTO_DIA_FIJO);
+      const costoFactura = kilos * precioKg;
+      const totalOperacion = costoFactura + costoDia;
+      return { costoFactura, totalOperacion, costoDia };
+    }
+
+    function sortRowsByFecha(rows = []) {
+      return [...rows].sort((a, b) => {
+        if ((a.fecha || "") !== (b.fecha || "")) {
+          return (a.fecha || "").localeCompare(b.fecha || "");
+        }
+        return String(a.created_at || "").localeCompare(String(b.created_at || ""));
+      });
+    }
+
+    function getUltimoViaje(rows = []) {
+      if (!rows.length) return null;
+      const ordered = sortRowsByFecha(rows);
+      return ordered[ordered.length - 1] || null;
+    }
+
+    async function saveOperacionActualSnapshot() {
+      const ultimo = getUltimoViaje(rowsState);
+
+      if (!ultimo) {
+        const { error } = await sb
+          .from(TABLE_RESUMEN)
+          .upsert({
+            clave: RESUMEN_CLAVE,
+            fecha_viaje: null,
+            viaje: null,
+            total_operacion: 0,
+            total_factura: 0,
+            total_kilos: 0,
+            costo_dia: 0
+          }, { onConflict: "clave" });
+
+        if (error) console.error("Error guardando resumen vacío:", error);
+        return;
+      }
+
+      const { costoFactura, totalOperacion, costoDia } = calcRow(ultimo);
+
+      const payload = {
+        clave: RESUMEN_CLAVE,
+        fecha_viaje: ultimo.fecha || null,
+        viaje: ultimo.viaje || null,
+        total_operacion: Number(totalOperacion || 0),
+        total_factura: Number(costoFactura || 0),
+        total_kilos: Number(ultimo.kilos || 0),
+        costo_dia: Number(costoDia || 0)
+      };
+
+      const { error } = await sb
+        .from(TABLE_RESUMEN)
+        .upsert(payload, { onConflict: "clave" });
+
+      if (error) console.error("Error guardando resumen_operacion_actual:", error);
+    }
+
+    async function loadOperacionActualSnapshot() {
+      const { data, error } = await sb
+        .from(TABLE_RESUMEN)
+        .select("*")
+        .eq("clave", RESUMEN_CLAVE)
+        .maybeSingle();
+
+      if (error) {
+        console.error("Error cargando resumen_operacion_actual:", error);
+        return;
+      }
+
+      const el = document.getElementById("kpiOperacionActual");
+      if (!el) return;
+      el.textContent = fmtMoney(data?.total_operacion || 0);
+    }
+
+    function buildRowHTML(row) {
+      const { costoFactura, totalOperacion, costoDia } = calcRow(row);
+
+      return `
+        <td>
+          <input
+            type="text"
+            value="${escapeHtml(row.viaje)}"
+            data-field="viaje"
+            data-id="${row.id}"
+            placeholder="Ej. KG FACTURA 09-04-26"
+          />
+        </td>
+        <td>
+          <input
+            type="date"
+            value="${escapeHtml(row.fecha)}"
+            data-field="fecha"
+            data-id="${row.id}"
+          />
+        </td>
+        <td>
+          <input
+            type="number"
+            step="0.01"
+            min="0"
+            class="num"
+            value="${row.kilos ?? 0}"
+            data-field="kilos"
+            data-id="${row.id}"
+            placeholder="0.00"
+          />
+        </td>
+        <td>
+          <input
+            type="number"
+            step="0.0001"
+            min="0"
+            class="num"
+            value="${row.precio_kg ?? 0}"
+            data-field="precio_kg"
+            data-id="${row.id}"
+            placeholder="0.0000"
+          />
+        </td>
+        <td>
+          <input
+            type="text"
+            class="num readonly"
+            data-readonly="costoFactura"
+            data-id="${row.id}"
+            value="${fmtMoney(costoFactura)}"
+            readonly
+          />
+        </td>
+        <td>
+          <input
+            type="text"
+            class="num readonly"
+            data-readonly="costoDia"
+            data-id="${row.id}"
+            value="${fmtMoney(costoDia)}"
+            readonly
+          />
+        </td>
+        <td>
+          <input
+            type="text"
+            class="num readonly"
+            data-readonly="totalOperacion"
+            data-id="${row.id}"
+            value="${fmtMoney(totalOperacion)}"
+            readonly
+          />
+        </td>
+        <td>
+          <div class="row-actions">
+            <button class="btn-danger" data-delete="${row.id}">Eliminar</button>
+          </div>
+        </td>
+      `;
+    }
+
+    function render() {
+      tbody.innerHTML = "";
+
+      rowsState = sortRowsByFecha(rowsState);
+
+      rowsState.forEach((row) => {
+        const tr = document.createElement("tr");
+        tr.dataset.rowId = row.id;
+        tr.innerHTML = buildRowHTML(row);
+        tbody.appendChild(tr);
+      });
+
+      updateTotals();
+    }
+
+    function flashRow(id) {
+      const tr = tbody.querySelector(`tr[data-row-id="${id}"]`);
+      if (!tr) return;
+      tr.classList.remove("sync-flash");
+      void tr.offsetWidth;
+      tr.classList.add("sync-flash");
+    }
+
+    function updateRowView(id) {
+      const row = rowsState.find(r => r.id === id);
+      if (!row) return;
+
+      const tr = tbody.querySelector(`tr[data-row-id="${id}"]`);
+      if (!tr) return;
+
+      const { costoFactura, totalOperacion, costoDia } = calcRow(row);
+
+      const costoFacturaEl = tr.querySelector(`[data-readonly="costoFactura"][data-id="${id}"]`);
+      const costoDiaEl = tr.querySelector(`[data-readonly="costoDia"][data-id="${id}"]`);
+      const totalOperacionEl = tr.querySelector(`[data-readonly="totalOperacion"][data-id="${id}"]`);
+
+      if (costoFacturaEl) costoFacturaEl.value = fmtMoney(costoFactura);
+      if (costoDiaEl) costoDiaEl.value = fmtMoney(costoDia);
+      if (totalOperacionEl) totalOperacionEl.value = fmtMoney(totalOperacion);
+
+      const fechaInput = tr.querySelector(`[data-field="fecha"][data-id="${id}"]`);
+      const viajeInput = tr.querySelector(`[data-field="viaje"][data-id="${id}"]`);
+
+      if (fechaInput && document.activeElement !== fechaInput) {
+        fechaInput.value = row.fecha || "";
+      }
+
+      if (viajeInput && document.activeElement !== viajeInput) {
+        viajeInput.value = row.viaje || "";
+      }
+
+      updateTotals();
+    }
+
+    function updateTotals() {
+      let totalKilos = 0;
+      let totalFactura = 0;
+      let totalDia = 0;
+      let totalOperacion = 0;
+
+      rowsState.forEach((row) => {
+        const { costoFactura, totalOperacion: totalOp, costoDia } = calcRow(row);
+        totalKilos += Number(row.kilos || 0);
+        totalFactura += costoFactura;
+        totalDia += costoDia;
+        totalOperacion += totalOp;
+      });
+
+      document.getElementById("totalKilos").textContent = fmtNumber(totalKilos, 2);
+      document.getElementById("totalFactura").textContent = fmtMoney(totalFactura);
+      document.getElementById("totalDia").textContent = fmtMoney(totalDia);
+      document.getElementById("totalOperacion").textContent = fmtMoney(totalOperacion);
+
+      document.getElementById("kpiKilos").textContent = `${fmtNumber(totalKilos, 2)} kg`;
+      document.getElementById("kpiFactura").textContent = fmtMoney(totalFactura);
+      document.getElementById("kpiDia").textContent = fmtMoney(totalDia);
+      document.getElementById("kpiOperacion").textContent = fmtMoney(totalOperacion);
+
+      const ultimo = getUltimoViaje(rowsState);
+      const totalOperacionActual = ultimo ? calcRow(ultimo).totalOperacion : 0;
+      const elActual = document.getElementById("kpiOperacionActual");
+      if (elActual) elActual.textContent = fmtMoney(totalOperacionActual);
+    }
+
+    async function loadRows() {
+      setRealtimeStatus("syncing", "Cargando viajes...");
+
+      const { data, error } = await sb
+        .from(TABLE)
+        .select("*")
+        .order("fecha", { ascending: true })
+        .order("created_at", { ascending: true });
+
+      if (error) {
+        console.error(error);
+        setRealtimeStatus("error", "Error al cargar");
+        alert("No se pudieron cargar los viajes desde Supabase.");
+        return;
+      }
+
+      rowsState = (data || []).map(normalizeRow);
+      render();
+      setRealtimeStatus("online", "Realtime activo");
+      setSaveState("Sin cambios", "warn");
+
+      if (!rowsState.length) {
+        await seedIfEmpty();
+      }
+
+      await saveOperacionActualSnapshot();
+      await loadOperacionActualSnapshot();
+    }
+
+    async function seedIfEmpty() {
+      const seed = [
+        {
+          fecha: "2026-04-09",
+          viaje: "KG FACTURA 09-04-26",
+          viaje_manual: false,
+          kilos: 99610,
+          precio_kg: 3.60,
+          costo_dia: COSTO_DIA_FIJO
+        },
+        {
+          fecha: "2026-04-10",
+          viaje: "KG FACTURA 10-04-26",
+          viaje_manual: false,
+          kilos: 108610.8,
+          precio_kg: 3.60,
+          costo_dia: COSTO_DIA_FIJO
+        }
+      ];
+
+      const { error } = await sb.from(TABLE).insert(seed);
+
+      if (error) console.error("Error sembrando datos iniciales:", error);
+    }
+
+    async function addRow() {
+      setSaveState("Guardando...", "info");
+
+      const fecha = new Date().toISOString().slice(0, 10);
+      const viaje = buildViajeName(fecha);
+
+      const payload = {
+        fecha,
+        viaje,
+        viaje_manual: false,
+        kilos: 0,
+        precio_kg: 0,
+        costo_dia: COSTO_DIA_FIJO
+      };
+
+      const { error } = await sb.from(TABLE).insert(payload);
+
+      if (error) {
+        console.error(error);
+        setSaveState("Error al guardar", "warn");
+        alert("No se pudo agregar el viaje.");
+        return;
+      }
+
+      setSaveState("Guardado", "info");
+      await saveOperacionActualSnapshot();
+      await loadOperacionActualSnapshot();
+    }
+
+    async function deleteRow(id) {
+      if (!confirm("¿Seguro que quieres eliminar este viaje?")) return;
+
+      setSaveState("Eliminando...", "info");
+
+      const { error } = await sb.from(TABLE).delete().eq("id", id);
+
+      if (error) {
+        console.error(error);
+        setSaveState("Error al eliminar", "warn");
+        alert("No se pudo eliminar el viaje.");
+        return;
+      }
+
+      rowsState = rowsState.filter(r => r.id !== id);
+      render();
+
+      setSaveState("Eliminado", "info");
+      await saveOperacionActualSnapshot();
+      await loadOperacionActualSnapshot();
+    }
+
+    async function clearAll() {
+      if (!confirm("¿Seguro que quieres borrar todos los viajes capturados?")) return;
+
+      setSaveState("Eliminando todo...", "info");
+
+      const { error } = await sb
+        .from(TABLE)
+        .delete()
+        .neq("id", "00000000-0000-0000-0000-000000000000");
+
+      if (error) {
+        console.error(error);
+        setSaveState("Error al limpiar", "warn");
+        alert("No se pudo limpiar la tabla.");
+        return;
+      }
+
+      rowsState = [];
+      render();
+
+      setSaveState("Tabla vacía", "info");
+      await saveOperacionActualSnapshot();
+      await loadOperacionActualSnapshot();
+    }
+
+    function patchLocalState(id, patch) {
+      const idx = rowsState.findIndex(r => r.id === id);
+      if (idx === -1) return;
+      rowsState[idx] = normalizeRow({ ...rowsState[idx], ...patch });
+      updateRowView(id);
+    }
+
+    function buildPatch(id, field, value) {
+      const row = rowsState.find(r => r.id === id);
+      if (!row) return null;
+
+      let patch = {};
+
+      if (field === "kilos" || field === "precio_kg") {
+        patch[field] = parseNum(value);
+      } else if (field === "fecha") {
+        patch.fecha = value;
+        if (!row.viaje_manual) {
+          patch.viaje = buildViajeName(value);
+        }
+      } else if (field === "viaje") {
+        const texto = value;
+        patch.viaje = texto;
+        patch.viaje_manual = texto.trim() !== "" && texto.trim() !== buildViajeName(row.fecha);
+      } else {
+        patch[field] = value;
+      }
+
+      patch.costo_dia = COSTO_DIA_FIJO;
+      return patch;
+    }
+
+    function queueUpdate(id, field, value) {
+      const patch = buildPatch(id, field, value);
+      if (!patch) return;
+
+      patchLocalState(id, patch);
+      setSaveState("Guardando...", "info");
+
+      clearTimeout(debounceTimers[id]);
+      debounceTimers[id] = setTimeout(async () => {
+        suppressRealtimeUntil.set(id, Date.now() + 1500);
+
+        const { error } = await sb
+          .from(TABLE)
+          .update(patch)
+          .eq("id", id);
+
+        if (error) {
+          console.error(error);
+          setSaveState("Error al guardar", "warn");
+          return;
+        }
+
+        setSaveState("Guardado", "info");
+        await saveOperacionActualSnapshot();
+        await loadOperacionActualSnapshot();
+      }, 400);
+    }
+
+    function shouldSuppressRealtime(id) {
+      const until = suppressRealtimeUntil.get(id) || 0;
+      return Date.now() < until;
+    }
+
+    function subscribeRealtime() {
+      setRealtimeStatus("syncing", "Suscribiendo realtime...");
+
+      channel = sb
+        .channel("rt-viajes-operacion")
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: TABLE },
+          async (payload) => {
+            const { eventType, new: newRow, old: oldRow } = payload;
+
+            if (eventType === "INSERT") {
+              const row = normalizeRow(newRow);
+              const exists = rowsState.some(r => r.id === row.id);
+
+              if (!exists) {
+                rowsState.push(row);
+                render();
+                flashRow(row.id);
+              }
+            }
+
+            if (eventType === "UPDATE") {
+              const row = normalizeRow(newRow);
+              const idx = rowsState.findIndex(r => r.id === row.id);
+              const suppress = shouldSuppressRealtime(row.id);
+
+              if (idx >= 0) {
+                rowsState[idx] = row;
+              } else {
+                rowsState.push(row);
+              }
+
+              if (suppress) {
+                updateTotals();
+              } else {
+                render();
+                flashRow(row.id);
+              }
+            }
+
+            if (eventType === "DELETE") {
+              const id = oldRow.id;
+              rowsState = rowsState.filter(r => r.id !== id);
+              render();
+            }
+
+            await saveOperacionActualSnapshot();
+            await loadOperacionActualSnapshot();
+          }
+        )
+        .subscribe((status) => {
+          if (status === "SUBSCRIBED") {
+            setRealtimeStatus("online", "Realtime activo");
+          } else if (status === "CHANNEL_ERROR") {
+            setRealtimeStatus("error", "Error de realtime");
+          } else {
+            setRealtimeStatus("syncing", `Realtime: ${status}`);
+          }
+        });
+    }
+
+    function subscribeResumenRealtime() {
+      resumenChannel = sb
+        .channel("rt-resumen-operacion-actual")
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: TABLE_RESUMEN },
+          async () => {
+            await loadOperacionActualSnapshot();
+          }
+        )
+        .subscribe();
+    }
+
+    document.getElementById("btnAdd").addEventListener("click", addRow);
+    document.getElementById("btnLimpiar").addEventListener("click", clearAll);
+    document.getElementById("btnPrint").addEventListener("click", () => window.print());
+
+    tbody.addEventListener("input", (e) => {
+      const target = e.target;
+      const id = target.dataset.id;
+      const field = target.dataset.field;
+      if (!id || !field) return;
+
+      if (field === "kilos" || field === "precio_kg" || field === "viaje") {
+        queueUpdate(id, field, target.value);
+      }
+    });
+
+    tbody.addEventListener("change", (e) => {
+      const target = e.target;
+      const id = target.dataset.id;
+      const field = target.dataset.field;
+      if (!id || !field) return;
+
+      if (field === "fecha") {
+        queueUpdate(id, field, target.value);
+      }
+    });
+
+    tbody.addEventListener("blur", (e) => {
+      const target = e.target;
+      const id = target.dataset.id;
+      const field = target.dataset.field;
+      if (!id || !field) return;
+
+      if (field === "kilos" || field === "precio_kg" || field === "viaje") {
+        queueUpdate(id, field, target.value);
+      }
+    }, true);
+
+    tbody.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-delete]");
+      if (!btn) return;
+      deleteRow(btn.dataset.delete);
+    });
+
+    async function init() {
+      await loadRows();
+      subscribeRealtime();
+      subscribeResumenRealtime();
+      await loadOperacionActualSnapshot();
+    }
+
+    init();
+  </script>
+</body>
+</html>
