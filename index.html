@@ -464,10 +464,10 @@
     const saveState = document.getElementById("saveState");
 
     let rowsState = [];
-    let isRendering = false;
     let debounceTimers = {};
     let channel = null;
     let resumenChannel = null;
+    let suppressRealtimeUntil = new Map();
 
     const fmtMoney = (n) => {
       const num = Number(n || 0);
@@ -585,9 +585,7 @@
             costo_dia: 0
           }, { onConflict: "clave" });
 
-        if (error) {
-          console.error("Error guardando resumen vacío:", error);
-        }
+        if (error) console.error("Error guardando resumen vacío:", error);
         return;
       }
 
@@ -607,9 +605,7 @@
         .from(TABLE_RESUMEN)
         .upsert(payload, { onConflict: "clave" });
 
-      if (error) {
-        console.error("Error guardando resumen_operacion_actual:", error);
-      }
+      if (error) console.error("Error guardando resumen_operacion_actual:", error);
     }
 
     async function loadOperacionActualSnapshot() {
@@ -678,6 +674,8 @@
           <input
             type="text"
             class="num readonly"
+            data-readonly="costoFactura"
+            data-id="${row.id}"
             value="${fmtMoney(costoFactura)}"
             readonly
           />
@@ -686,6 +684,8 @@
           <input
             type="text"
             class="num readonly"
+            data-readonly="costoDia"
+            data-id="${row.id}"
             value="${fmtMoney(costoDia)}"
             readonly
           />
@@ -694,6 +694,8 @@
           <input
             type="text"
             class="num readonly"
+            data-readonly="totalOperacion"
+            data-id="${row.id}"
             value="${fmtMoney(totalOperacion)}"
             readonly
           />
@@ -707,15 +709,9 @@
     }
 
     function render() {
-      isRendering = true;
-
-      const previousFocus = document.activeElement;
-      const focusedId = previousFocus?.dataset?.id || null;
-      const focusedField = previousFocus?.dataset?.field || null;
-      const selectionStart = typeof previousFocus?.selectionStart === "number" ? previousFocus.selectionStart : null;
-      const selectionEnd = typeof previousFocus?.selectionEnd === "number" ? previousFocus.selectionEnd : null;
-
       tbody.innerHTML = "";
+
+      rowsState = sortRowsByFecha(rowsState);
 
       rowsState.forEach((row) => {
         const tr = document.createElement("tr");
@@ -725,20 +721,6 @@
       });
 
       updateTotals();
-
-      if (focusedId && focusedField) {
-        const el = tbody.querySelector(`[data-id="${focusedId}"][data-field="${focusedField}"]`);
-        if (el) {
-          el.focus();
-          try {
-            if (selectionStart !== null && selectionEnd !== null && el.type !== "date") {
-              el.setSelectionRange(selectionStart, selectionEnd);
-            }
-          } catch {}
-        }
-      }
-
-      isRendering = false;
     }
 
     function flashRow(id) {
@@ -747,6 +729,37 @@
       tr.classList.remove("sync-flash");
       void tr.offsetWidth;
       tr.classList.add("sync-flash");
+    }
+
+    function updateRowView(id) {
+      const row = rowsState.find(r => r.id === id);
+      if (!row) return;
+
+      const tr = tbody.querySelector(`tr[data-row-id="${id}"]`);
+      if (!tr) return;
+
+      const { costoFactura, totalOperacion, costoDia } = calcRow(row);
+
+      const costoFacturaEl = tr.querySelector(`[data-readonly="costoFactura"][data-id="${id}"]`);
+      const costoDiaEl = tr.querySelector(`[data-readonly="costoDia"][data-id="${id}"]`);
+      const totalOperacionEl = tr.querySelector(`[data-readonly="totalOperacion"][data-id="${id}"]`);
+
+      if (costoFacturaEl) costoFacturaEl.value = fmtMoney(costoFactura);
+      if (costoDiaEl) costoDiaEl.value = fmtMoney(costoDia);
+      if (totalOperacionEl) totalOperacionEl.value = fmtMoney(totalOperacion);
+
+      const fechaInput = tr.querySelector(`[data-field="fecha"][data-id="${id}"]`);
+      const viajeInput = tr.querySelector(`[data-field="viaje"][data-id="${id}"]`);
+
+      if (fechaInput && document.activeElement !== fechaInput) {
+        fechaInput.value = row.fecha || "";
+      }
+
+      if (viajeInput && document.activeElement !== viajeInput) {
+        viajeInput.value = row.viaje || "";
+      }
+
+      updateTotals();
     }
 
     function updateTotals() {
@@ -776,9 +789,7 @@
       const ultimo = getUltimoViaje(rowsState);
       const totalOperacionActual = ultimo ? calcRow(ultimo).totalOperacion : 0;
       const elActual = document.getElementById("kpiOperacionActual");
-      if (elActual) {
-        elActual.textContent = fmtMoney(totalOperacionActual);
-      }
+      if (elActual) elActual.textContent = fmtMoney(totalOperacionActual);
     }
 
     async function loadRows() {
@@ -832,9 +843,7 @@
 
       const { error } = await sb.from(TABLE).insert(seed);
 
-      if (error) {
-        console.error("Error sembrando datos iniciales:", error);
-      }
+      if (error) console.error("Error sembrando datos iniciales:", error);
     }
 
     async function addRow() {
@@ -917,12 +926,12 @@
       const idx = rowsState.findIndex(r => r.id === id);
       if (idx === -1) return;
       rowsState[idx] = normalizeRow({ ...rowsState[idx], ...patch });
-      render();
+      updateRowView(id);
     }
 
-    function queueUpdate(id, field, value) {
+    function buildPatch(id, field, value) {
       const row = rowsState.find(r => r.id === id);
-      if (!row) return;
+      if (!row) return null;
 
       let patch = {};
 
@@ -942,12 +951,20 @@
       }
 
       patch.costo_dia = COSTO_DIA_FIJO;
+      return patch;
+    }
+
+    function queueUpdate(id, field, value) {
+      const patch = buildPatch(id, field, value);
+      if (!patch) return;
 
       patchLocalState(id, patch);
       setSaveState("Guardando...", "info");
 
       clearTimeout(debounceTimers[id]);
       debounceTimers[id] = setTimeout(async () => {
+        suppressRealtimeUntil.set(id, Date.now() + 1500);
+
         const { error } = await sb
           .from(TABLE)
           .update(patch)
@@ -962,7 +979,12 @@
         setSaveState("Guardado", "info");
         await saveOperacionActualSnapshot();
         await loadOperacionActualSnapshot();
-      }, 350);
+      }, 400);
+    }
+
+    function shouldSuppressRealtime(id) {
+      const until = suppressRealtimeUntil.get(id) || 0;
+      return Date.now() < until;
     }
 
     function subscribeRealtime() {
@@ -982,10 +1004,6 @@
 
               if (!exists) {
                 rowsState.push(row);
-                rowsState.sort((a, b) => {
-                  if (a.fecha !== b.fecha) return a.fecha.localeCompare(b.fecha);
-                  return String(a.created_at || "").localeCompare(String(b.created_at || ""));
-                });
                 render();
                 flashRow(row.id);
               }
@@ -994,6 +1012,7 @@
             if (eventType === "UPDATE") {
               const row = normalizeRow(newRow);
               const idx = rowsState.findIndex(r => r.id === row.id);
+              const suppress = shouldSuppressRealtime(row.id);
 
               if (idx >= 0) {
                 rowsState[idx] = row;
@@ -1001,13 +1020,12 @@
                 rowsState.push(row);
               }
 
-              rowsState.sort((a, b) => {
-                if (a.fecha !== b.fecha) return a.fecha.localeCompare(b.fecha);
-                return String(a.created_at || "").localeCompare(String(b.created_at || ""));
-              });
-
-              render();
-              flashRow(row.id);
+              if (suppress) {
+                updateTotals();
+              } else {
+                render();
+                flashRow(row.id);
+              }
             }
 
             if (eventType === "DELETE") {
@@ -1049,22 +1067,37 @@
     document.getElementById("btnPrint").addEventListener("click", () => window.print());
 
     tbody.addEventListener("input", (e) => {
-      if (isRendering) return;
       const target = e.target;
       const id = target.dataset.id;
       const field = target.dataset.field;
       if (!id || !field) return;
-      queueUpdate(id, field, target.value);
+
+      if (field === "kilos" || field === "precio_kg" || field === "viaje") {
+        queueUpdate(id, field, target.value);
+      }
     });
 
     tbody.addEventListener("change", (e) => {
-      if (isRendering) return;
       const target = e.target;
       const id = target.dataset.id;
       const field = target.dataset.field;
       if (!id || !field) return;
-      queueUpdate(id, field, target.value);
+
+      if (field === "fecha") {
+        queueUpdate(id, field, target.value);
+      }
     });
+
+    tbody.addEventListener("blur", (e) => {
+      const target = e.target;
+      const id = target.dataset.id;
+      const field = target.dataset.field;
+      if (!id || !field) return;
+
+      if (field === "kilos" || field === "precio_kg" || field === "viaje") {
+        queueUpdate(id, field, target.value);
+      }
+    }, true);
 
     tbody.addEventListener("click", (e) => {
       const btn = e.target.closest("[data-delete]");
